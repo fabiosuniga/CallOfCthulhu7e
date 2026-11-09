@@ -333,7 +333,7 @@ function refreshAuthModalState() {
 export function triggerD100Toast(label, targetVal) {
   const res = evaluateD100Roll(targetVal);
   const toast = document.getElementById("diceToast");
-  document.getElementById("diceToastTitle").textContent = `🎲 ${label}`;
+  document.getElementById("diceToastTitle").innerHTML = `<i class="fa-solid fa-dice-d20" style="color:var(--crimson-bright); margin-right:0.35rem;"></i> ${escapeHtml(label)}`;
   document.getElementById("diceToastTargets").textContent = `Regular: ${res.target}% | Difícil: ${res.half}% | Extremo: ${res.fifth}%`;
   document.getElementById("diceToastRoll").textContent = String(res.roll).padStart(2, "0");
 
@@ -387,11 +387,11 @@ function renderDashboard(root) {
         <div style="display:flex; gap:0.65rem; flex-wrap:wrap;">
           ${
             canSync
-              ? `<button type="button" class="btn btn-outline-crimson" id="btnDashSync">☁️ Sincronizar ${localCount} Ficha(s) Local p/ Supabase</button>`
+              ? `<button type="button" class="btn btn-outline-crimson" id="btnDashSync"><i class="fa-solid fa-cloud-arrow-up"></i> Sincronizar ${localCount} Ficha(s) Local p/ Supabase</button>`
               : ""
           }
-          <button type="button" class="btn" id="btnCreateSample">⚡ Gerar Investigador Exemplo (Anos 1920)</button>
-          <button type="button" class="btn btn-primary" id="btnDashNew">+ Criar Novo Investigador (5 Etapas)</button>
+          <button type="button" class="btn" id="btnCreateSample"><i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Investigador Exemplo (Anos 1920)</button>
+          <button type="button" class="btn btn-primary" id="btnDashNew"><i class="fa-solid fa-plus"></i> Criar Novo Investigador (5 Etapas)</button>
         </div>
       </div>
 
@@ -425,7 +425,11 @@ function renderDashboard(root) {
                       <div class="inv-card-occ">${escapeHtml(occName)} • ${inv.age || 25} anos (${inv.era === "modern" ? "Era Moderna" : "Década de 1920"})</div>
                     </div>
                     <span style="font-size:0.7rem; padding:0.15rem 0.45rem; border-radius:4px; border:1px solid var(--border-ornate); color:var(--text-secondary);">
-                      ${inv.storage === "supabase" ? "☁️ Supabase" : "💾 Local"}
+                      ${
+                        inv.storage === "supabase"
+                          ? `<i class="fa-solid fa-cloud"></i> Supabase`
+                          : `<i class="fa-solid fa-hard-drive"></i> Local`
+                      }
                     </span>
                   </div>
 
@@ -451,13 +455,13 @@ function renderDashboard(root) {
 
                 <div style="display:flex; justify-content:space-between; gap:0.5rem; padding-top:0.75rem; border-top:1px solid var(--border-subtle);">
                   <button type="button" class="btn btn-primary btn-sm" data-open-id="${inv.id}" style="flex:1;">
-                    📜 Abrir Ficha Editável
+                    <i class="fa-solid fa-scroll"></i> Abrir Ficha Editável
                   </button>
                   <button type="button" class="btn btn-sm" data-edit-id="${inv.id}" title="Editar no Wizard">
-                    ✏️ Wizard
+                    <i class="fa-solid fa-pen-to-square"></i> Wizard
                   </button>
-                  <button type="button" class="btn btn-sm" data-del-id="${inv.id}" title="Excluir Investigador">
-                    🗑️
+                  <button type="button" class="btn btn-sm" data-del-id="${inv.id}" title="Excluir Investigador" aria-label="Excluir Investigador">
+                    <i class="fa-solid fa-trash-can"></i>
                   </button>
                 </div>
               </article>
@@ -748,22 +752,24 @@ function renderWizard(root) {
       <div style="font-size:0.86rem; color:${
         stepValidation.valid ? "var(--status-success)" : "var(--status-luck)"
       }; font-weight:600;">
-        ${stepValidation.valid ? "✔ " : "⚠ "}${escapeHtml(stepValidation.message)}
+        <i class="fa-solid ${
+          stepValidation.valid ? "fa-circle-check" : "fa-triangle-exclamation"
+        }"></i> ${escapeHtml(stepValidation.message)}
       </div>
 
       <div style="display:flex; gap:0.65rem;">
         <button type="button" class="btn" id="btnWizardCancel">Cancelar</button>
         ${
           state.wizardStep > 1
-            ? `<button type="button" class="btn" id="btnWizardPrev">← Etapa Anterior</button>`
+            ? `<button type="button" class="btn" id="btnWizardPrev"><i class="fa-solid fa-arrow-left"></i> Etapa Anterior</button>`
             : ""
         }
         ${
           state.wizardStep < 5
             ? `<button type="button" class="btn btn-primary" id="btnWizardNext" ${
                 !stepValidation.valid ? "disabled" : ""
-              }>Próxima Etapa →</button>`
-            : `<button type="button" class="btn btn-primary" id="btnWizardFinish">💾 Salvar Investigador & Abrir Ficha</button>`
+              }>Próxima Etapa <i class="fa-solid fa-arrow-right"></i></button>`
+            : `<button type="button" class="btn btn-primary" id="btnWizardFinish"><i class="fa-solid fa-floppy-disk"></i> Salvar Investigador & Abrir Ficha</button>`
         }
       </div>
     </div>
@@ -864,7 +870,7 @@ function renderWizardStep1(container, d) {
           Características Primárias (Fórmulas Oficiais)
         </h3>
         <button type="button" class="btn btn-primary btn-sm" id="btnRollAllChars">
-          🎲 Rolar Todos os Atributos + Sorte
+          <i class="fa-solid fa-dice-d20"></i> Rolar Todos os Atributos + Sorte
         </button>
       </div>
 
@@ -879,7 +885,7 @@ function renderWizardStep1(container, d) {
                   <span style="font-size:0.75rem; color:var(--text-secondary); margin-left:0.3rem;">${attr.name}</span>
                 </div>
                 <button type="button" class="btn btn-sm" data-roll-char="${attr.key}" style="padding:0.15rem 0.45rem;" title="Rolar ${attr.formula}">
-                  🎲 ${attr.formula}
+                  <i class="fa-solid fa-dice"></i> ${attr.formula}
                 </button>
               </div>
               <div class="coc-triple-box">
@@ -909,7 +915,7 @@ function renderWizardStep1(container, d) {
               <span style="font-size:0.74rem; color:var(--text-secondary); margin-left:0.3rem;">Recurso Dinâmico</span>
             </div>
             <button type="button" class="btn btn-sm" id="btnRollLuck" style="padding:0.15rem 0.45rem;">
-              🎲 ${bracket.doubleLuckRoll ? "2x 3D6×5 (Maior)" : "3D6×5"}
+              <i class="fa-solid fa-dice"></i> ${bracket.doubleLuckRoll ? "2x 3D6×5 (Maior)" : "3D6×5"}
             </button>
           </div>
           <div class="coc-triple-box">
@@ -937,7 +943,7 @@ function renderWizardStep1(container, d) {
             bracket.eduChecks > 0
               ? `
               <button type="button" class="btn btn-outline-crimson btn-sm" id="btnRunEduChecks">
-                🎲 Executar ${bracket.eduChecks} Verificação(ões) de EDU (1D100)
+                <i class="fa-solid fa-dice-d20"></i> Executar ${bracket.eduChecks} Verificação(ões) de EDU (1D100)
               </button>
               <div style="margin-top:0.55rem; font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary);">
                 ${
@@ -1350,10 +1356,10 @@ function renderWizardStep3(container, d) {
 
       <div style="display:flex; justify-content:flex-end; margin-bottom:0.85rem; gap:0.5rem;">
         <button type="button" class="btn btn-sm" id="btnAutoAllocateSkills">
-          ⚡ Auto-Distribuir Pontos Sugeridos da Ocupação
+          <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Distribuir Pontos Sugeridos da Ocupação
         </button>
         <button type="button" class="btn btn-sm" id="btnResetSkills">
-          ↺ Zerar Pontos Alocados
+          <i class="fa-solid fa-rotate-left"></i> Zerar Pontos Alocados
         </button>
       </div>
 
@@ -1384,7 +1390,7 @@ function renderWizardStep3(container, d) {
                   isOcc ? "rgba(220,20,30,0.07)" : "transparent"
                 };">
                   <td style="padding:0.4rem 0.5rem; font-weight:${isOcc ? "700" : "400"};">
-                    ${isOcc ? `<span style="color:var(--crimson-bright);">★</span> ` : ""}
+                    ${isOcc ? `<i class="fa-solid fa-star" style="color:var(--crimson-bright); font-size:0.72rem; margin-right:0.25rem;"></i>` : ""}
                     ${sk.name}
                     ${
                       sk.id === "credit_rating"
@@ -1523,7 +1529,7 @@ function renderWizardStep4(container, d) {
     <section class="ornate-panel">
       <div class="section-banner">Etapa 4: Antecedentes (Backstory), Personalidade & Conexão-Chave</div>
       <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1rem;">
-        Preencha pelo menos <strong>3 das 6 categorias iniciais</strong> e marque exatamente <strong>1 Conexão-Chave (★ Key Connection)</strong> usada para recuperar Sanidade.
+        Preencha pelo menos <strong>3 das 6 categorias iniciais</strong> e marque exatamente <strong>1 Conexão-Chave (<i class="fa-solid fa-star" style="color:var(--status-luck);"></i> Key Connection)</strong> usada para recuperar Sanidade.
       </p>
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:1rem;">
@@ -1544,7 +1550,7 @@ function renderWizardStep4(container, d) {
                     <input type="radio" name="keyConnectionRadio" data-key-conn="${cat.id}" ${
                         entry.is_key_connection ? "checked" : ""
                       } />
-                    ★ Conexão-Chave
+                    <i class="fa-solid fa-star"></i> Conexão-Chave
                   </label>
                 `
                     : ""
@@ -1617,7 +1623,7 @@ function renderWizardStep5(container, d) {
 
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
         <label style="margin:0;">Armas de Combate (Frente da Ficha)</label>
-        <button type="button" class="btn btn-sm" id="btnAddWeapon">+ Adicionar Arma</button>
+        <button type="button" class="btn btn-sm" id="btnAddWeapon"><i class="fa-solid fa-plus"></i> Adicionar Arma</button>
       </div>
 
       <div style="overflow-x:auto;">
@@ -1649,7 +1655,7 @@ function renderWizardStep5(container, d) {
                 <td style="padding:0.35rem;">
                   ${
                     idx > 0
-                      ? `<button type="button" class="btn btn-sm" data-del-wp="${idx}">✕</button>`
+                      ? `<button type="button" class="btn btn-sm" data-del-wp="${idx}" aria-label="Remover Arma"><i class="fa-solid fa-xmark"></i></button>`
                       : ""
                   }
                 </td>
@@ -1720,19 +1726,19 @@ function renderEditableSheet(root, sheet) {
     <!-- BARRA DE CONTROLE DA FICHA -->
     <div class="ornate-panel no-print" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; padding:0.85rem 1.2rem;">
       <div style="display:flex; gap:0.5rem;">
-        <button type="button" class="btn btn-sm" id="btnBackToDash">← Meus Investigadores</button>
+        <button type="button" class="btn btn-sm" id="btnBackToDash"><i class="fa-solid fa-arrow-left"></i> Meus Investigadores</button>
         <button type="button" class="btn btn-sm ${state.sheetTab === "front" ? "btn-primary" : ""}" id="btnTabFront">
-          📄 Frente da Ficha (Características, Perícias & Combate)
+          <i class="fa-solid fa-id-card"></i> Frente da Ficha (Características, Perícias & Combate)
         </button>
         <button type="button" class="btn btn-sm ${state.sheetTab === "back" ? "btn-primary" : ""}" id="btnTabBack">
-          📜 Verso da Ficha (Antecedentes, Pertences & Finanças)
+          <i class="fa-solid fa-scroll"></i> Verso da Ficha (Antecedentes, Pertences & Finanças)
         </button>
       </div>
       <div style="display:flex; gap:0.5rem;">
         <span style="font-size:0.78rem; color:var(--text-secondary); align-self:center;">
-          💡 Clique em qualquer atributo ou perícia (🎲) para rolar 1D100
+          <i class="fa-solid fa-dice-d20" style="color:var(--crimson-bright);"></i> Clique em qualquer atributo ou perícia para rolar 1D100
         </span>
-        <button type="button" class="btn btn-sm" id="btnPrintSheet">🖨️ Imprimir / PDF</button>
+        <button type="button" class="btn btn-sm" id="btnPrintSheet"><i class="fa-solid fa-print"></i> Imprimir / PDF</button>
       </div>
     </div>
 
@@ -1768,8 +1774,8 @@ function renderEditableSheet(root, sheet) {
                   <div style="border:1px solid var(--border-subtle); padding:0.4rem; border-radius:3px; background:var(--bg-surface);">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
                       <span style="font-family:var(--font-display); font-weight:700; font-size:0.85rem;">${attr.sigla}</span>
-                      <button type="button" class="btn btn-sm" data-roll-d100-label="${attr.sigla} (${attr.name})" data-roll-d100-val="${f.total}" style="padding:0.1rem 0.35rem; font-size:0.7rem;">
-                        🎲
+                      <button type="button" class="btn btn-sm" data-roll-d100-label="${attr.sigla} (${attr.name})" data-roll-d100-val="${f.total}" style="padding:0.1rem 0.35rem; font-size:0.7rem;" title="Rolar 1D100">
+                        <i class="fa-solid fa-dice-d20"></i>
                       </button>
                     </div>
                     <div class="coc-triple-box">
@@ -1821,7 +1827,7 @@ function renderEditableSheet(root, sheet) {
             <div class="track-header">
               <span class="track-title" style="color:var(--status-san);">Sanidade</span>
               <button type="button" class="btn btn-sm" data-roll-d100-label="Teste de Sanidade" data-roll-d100-val="${d.sanity}" style="padding:0.1rem 0.45rem;">
-                🎲 Rolar SAN
+                <i class="fa-solid fa-dice-d20"></i> Rolar SAN
               </button>
             </div>
             <div class="track-counter">
@@ -1841,7 +1847,7 @@ function renderEditableSheet(root, sheet) {
             <div class="track-header">
               <span class="track-title" style="color:var(--status-luck);">Sorte</span>
               <button type="button" class="btn btn-sm" data-roll-d100-label="Teste de Sorte" data-roll-d100-val="${c.luck}" style="padding:0.1rem 0.45rem;">
-                🎲 Rolar Sorte
+                <i class="fa-solid fa-dice-d20"></i> Rolar Sorte
               </button>
             </div>
             <div class="track-counter">
@@ -1901,7 +1907,7 @@ function renderEditableSheet(root, sheet) {
                   ${entry.checked_for_improvement ? "checked" : ""}
                 />
                 <div class="skill-title" style="cursor:pointer;" data-roll-d100-label="${sk.name}" data-roll-d100-val="${frac.total}">
-                  <span>🎲 ${sk.name}</span>
+                  <span><i class="fa-solid fa-dice-d20" style="color:var(--crimson-primary); font-size:0.72rem; margin-right:0.25rem;"></i>${sk.name}</span>
                   <span class="skill-base-tag">(${String(entry.base_value).padStart(2, "0")}%)</span>
                 </div>
                 <div class="skill-mini-triple">
@@ -1940,7 +1946,7 @@ function renderEditableSheet(root, sheet) {
                     <tr style="border-bottom:1px solid var(--border-subtle);">
                       <td style="padding:0.4rem;">
                         <button type="button" class="btn btn-sm" data-roll-d100-label="Ataque: ${escapeHtml(w.name)}" data-roll-d100-val="${wf.total}" style="padding:0.15rem 0.45rem;">
-                          🎲 ${escapeHtml(w.name)}
+                          <i class="fa-solid fa-dice-d20"></i> ${escapeHtml(w.name)}
                         </button>
                       </td>
                       <td style="padding:0.4rem; font-family:var(--font-mono); font-weight:700;">${wf.total}%</td>
@@ -2002,7 +2008,7 @@ function renderEditableSheet(root, sheet) {
                   <strong style="font-family:var(--font-display); font-size:0.85rem;">${cat.title}</strong>
                   ${
                     entry.is_key_connection
-                      ? `<span class="char-formula-badge" style="color:var(--status-luck);">★ Conexão-Chave</span>`
+                      ? `<span class="char-formula-badge" style="color:var(--status-luck);"><i class="fa-solid fa-star"></i> Conexão-Chave</span>`
                       : ""
                   }
                 </div>

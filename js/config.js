@@ -4,10 +4,9 @@
 // ============================================================================
 
 export const DEFAULT_SUPABASE_CONFIG = {
-  // Você pode colar sua URL e Anon/Publishable Key diretamente abaixo antes de subir
-  // para o GitHub Pages, OU configurar pelo botão "Configurar Supabase" na interface.
-  url: "",
-  anonKey: ""
+  // Configurado para o projeto Supabase vinculado ao GitHub Pages
+  url: "https://vwvqiwfgeblseehxsmqr.supabase.co",
+  anonKey: "sb_publishable_OJPNRLkO4r21yF4s2Iy61g_jgEXA0Hm"
 };
 
 const STORAGE_KEY = "coc7e_supabase_config";
