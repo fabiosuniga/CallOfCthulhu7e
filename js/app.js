@@ -6,6 +6,8 @@
 import {
   initSupabase,
   getCurrentUser,
+  getUserDisplayName,
+  updateUserDisplayName,
   signInWithEmail,
   signUpWithEmail,
   onAuthStateChange,
@@ -15,8 +17,6 @@ import {
   saveInvestigator,
   updateLiveInvestigatorStatus,
   deleteInvestigator,
-  syncLocalToSupabase,
-  getLocalInvestigators,
   listMyCampaigns,
   createCampaign,
   joinCampaignByCode,
@@ -105,7 +105,7 @@ function createBlankDraft() {
   return {
     id: null,
     name: "",
-    player_name: state.currentUser?.email?.split("@")[0] || "",
+    player_name: getUserDisplayName(state.currentUser),
     age,
     gender: "",
     era: "1920",
@@ -234,9 +234,12 @@ function updateTopbarVisibility() {
   if (state.currentUser) {
     nav.style.display = "flex";
     if (emailSpan) {
+      const displayName = getUserDisplayName(state.currentUser);
+      emailSpan.style.cursor = "pointer";
+      emailSpan.title = "Clique para alterar seu nome de exibição";
       emailSpan.innerHTML = `<i class="fa-solid fa-user-check" style="color:var(--status-success); margin-right:0.3rem;"></i>${escapeHtml(
-        state.currentUser.email
-      )}`;
+        displayName
+      )} <i class="fa-solid fa-pen" style="font-size:0.65rem; opacity:0.6; margin-left:0.2rem;"></i>`;
     }
   } else {
     nav.style.display = "none";
@@ -278,6 +281,21 @@ function setupGlobalListeners() {
   document.getElementById("btnTopSignOut")?.addEventListener("click", async () => {
     await signOutUser();
     await refreshConnectionAndData();
+  });
+
+  document.getElementById("topUserEmail")?.addEventListener("click", async () => {
+    if (!state.currentUser) return;
+    const currentName = getUserDisplayName(state.currentUser);
+    const newName = prompt("Como você gostaria de ser chamado(a) no sistema?", currentName);
+    if (newName && newName.trim() && newName.trim() !== currentName) {
+      try {
+        state.currentUser = await updateUserDisplayName(newName.trim());
+        updateTopbarVisibility();
+        render();
+      } catch (err) {
+        alert(err.message || "Não foi possível atualizar seu nome.");
+      }
+    }
   });
 
   document.getElementById("btnCloseDiceToast")?.addEventListener("click", () => {
@@ -377,8 +395,25 @@ function renderAuthScreen(root) {
         </div>
 
         <form id="authMainForm" style="display:flex; flex-direction:column; gap:0.9rem;">
+          ${
+            !isLogin
+              ? `
+            <div>
+              <label for="authNameInput">Seu Nome (Jogador / Guardião) *</label>
+              <input
+                type="text"
+                id="authNameInput"
+                required
+                minlength="2"
+                placeholder="Ex.: Fábio Suniga"
+                autocomplete="name"
+              />
+            </div>
+          `
+              : ""
+          }
           <div>
-            <label for="authEmailInput">E-mail do Investigador / Guardião</label>
+            <label for="authEmailInput">E-mail</label>
             <input
               type="email"
               id="authEmailInput"
@@ -425,6 +460,7 @@ function renderAuthScreen(root) {
 
   root.querySelector("#authMainForm").addEventListener("submit", async (e) => {
     e.preventDefault();
+    const displayName = root.querySelector("#authNameInput")?.value?.trim() || "";
     const email = root.querySelector("#authEmailInput").value.trim();
     const pass = root.querySelector("#authPassInput").value;
     const msgEl = root.querySelector("#authScreenFeedback");
@@ -439,7 +475,7 @@ function renderAuthScreen(root) {
         await signInWithEmail(email, pass);
         await refreshConnectionAndData();
       } else {
-        const res = await signUpWithEmail(email, pass);
+        const res = await signUpWithEmail(email, pass, displayName);
         if (res?.session) {
           await refreshConnectionAndData();
         } else {
@@ -481,8 +517,6 @@ function translateAuthError(rawMsg = "") {
 // 1. VISÃO: DASHBOARD ("MEUS INVESTIGADORES")
 // ============================================================================
 function renderDashboard(root) {
-  const localCount = getLocalInvestigators().length;
-
   root.innerHTML = `
     <section class="ornate-panel">
       <div class="hero-header">
@@ -495,11 +529,6 @@ function renderDashboard(root) {
           </p>
         </div>
         <div style="display:flex; gap:0.65rem; flex-wrap:wrap;">
-          ${
-            localCount > 0
-              ? `<button type="button" class="btn btn-outline-crimson" id="btnDashSync"><i class="fa-solid fa-cloud-arrow-up"></i> Sincronizar ${localCount} Ficha(s) Local</button>`
-              : ""
-          }
           <button type="button" class="btn" id="btnGoCampaigns"><i class="fa-solid fa-users-viewfinder"></i> Ir para Mesas Ao Vivo</button>
           <button type="button" class="btn" id="btnCreateSample"><i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Investigador Exemplo</button>
           <button type="button" class="btn btn-primary" id="btnDashNew"><i class="fa-solid fa-plus"></i> Criar Novo Investigador (5 Etapas)</button>
@@ -589,13 +618,6 @@ function renderDashboard(root) {
     state.view = "campaigns";
     state.campaigns = await listMyCampaigns();
     render();
-  });
-
-  root.querySelector("#btnDashSync")?.addEventListener("click", async () => {
-    const count = await syncLocalToSupabase();
-    state.investigators = await listInvestigators();
-    render();
-    alert(`${count} ficha(s) sincronizada(s)!`);
   });
 
   root.querySelectorAll("[data-open-id]").forEach((btn) => {
@@ -885,7 +907,7 @@ function renderCampaignRoom(root) {
               isKeeper
                 ? `<span style="color:var(--status-luck); font-weight:700;"><i class="fa-solid fa-crown"></i> Modo Guardião dos Mistérios</span>`
                 : `<span><i class="fa-solid fa-user-secret"></i> Jogador: ${escapeHtml(
-                    myInv?.name || state.currentUser.email
+                    myInv?.name || getUserDisplayName(state.currentUser)
                   )}</span>`
             }
             ${campaign.description ? ` • ${escapeHtml(campaign.description)}` : ""}
@@ -1316,7 +1338,7 @@ function renderCampaignRoom(root) {
 
       await sendCampaignMessage({
         campaign_id: campaign.id,
-        sender_name: myInv?.name || state.currentUser.email,
+        sender_name: myInv?.name || getUserDisplayName(state.currentUser),
         sender_role: "player",
         message_type: "roll",
         content: `Teste de ${label}`,
@@ -1380,7 +1402,7 @@ function renderCampaignRoom(root) {
 
     await sendCampaignMessage({
       campaign_id: campaign.id,
-      sender_name: isKeeper ? "Guardião" : myInv?.name || state.currentUser.email,
+      sender_name: isKeeper ? "Guardião" : myInv?.name || getUserDisplayName(state.currentUser),
       sender_role: isKeeper ? "keeper" : "player",
       message_type: "chat",
       content: txt,
@@ -1394,7 +1416,7 @@ function renderCampaignRoom(root) {
 async function createSampleInvestigator() {
   const sample = createBlankDraft();
   sample.name = "Arthur Blackwood";
-  sample.player_name = state.currentUser?.email?.split("@")[0] || "Investigador";
+  sample.player_name = getUserDisplayName(state.currentUser);
   sample.age = 34;
   sample.gender = "Masculino";
   sample.era = "1920";
@@ -2950,7 +2972,7 @@ function renderEditableSheet(root, sheet) {
         try {
           await sendCampaignMessage({
             campaign_id: state.returnToCampaignId,
-            sender_name: sheet.name || state.currentUser.email,
+            sender_name: sheet.name || getUserDisplayName(state.currentUser),
             sender_role: "player",
             message_type: "roll",
             content: `Teste de ${label}`,

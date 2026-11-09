@@ -1,12 +1,11 @@
 // ============================================================================
-// CLIENTE SUPABASE + PERSISTÊNCIA RELACIONAL, MESAS & REALTIME (supabaseClient.js)
+// CLIENTE SUPABASE — PERSISTÊNCIA EM NUVEM, MESAS & REALTIME (supabaseClient.js)
 // ============================================================================
 
 import { getSupabaseConfig, isSupabaseConfigured } from "./config.js";
 
 let supabaseInstance = null;
 let activeRealtimeChannel = null;
-const LOCAL_DB_KEY = "coc7e_local_investigators_v1";
 
 export async function initSupabase() {
   if (!isSupabaseConfigured()) {
@@ -32,7 +31,7 @@ export async function initSupabase() {
     });
     return supabaseInstance;
   } catch (err) {
-    console.error("Falha ao inicializar @supabase/supabase-js:", err);
+    console.error("Falha ao inicializar cliente:", err);
     supabaseInstance = null;
     return null;
   }
@@ -43,13 +42,37 @@ export function getClient() {
 }
 
 // ============================================================================
-// AUTENTICAÇÃO (Supabase Auth)
+// AUTENTICAÇÃO E PERFIL DO USUÁRIO
 // ============================================================================
 
 export async function getCurrentUser() {
   if (!supabaseInstance) return null;
   const { data, error } = await supabaseInstance.auth.getUser();
   if (error) return null;
+  return data?.user || null;
+}
+
+export function getUserDisplayName(user) {
+  if (!user) return "Investigador";
+  return (
+    user.user_metadata?.display_name ||
+    user.user_metadata?.full_name ||
+    user.email?.split("@")[0] ||
+    "Investigador"
+  );
+}
+
+export async function updateUserDisplayName(displayName) {
+  if (!supabaseInstance) throw new Error("Serviço de autenticação indisponível.");
+  const cleanName = (displayName || "").trim();
+  if (!cleanName) throw new Error("Informe um nome válido.");
+  const { data, error } = await supabaseInstance.auth.updateUser({
+    data: {
+      display_name: cleanName,
+      full_name: cleanName
+    }
+  });
+  if (error) throw error;
   return data?.user || null;
 }
 
@@ -63,14 +86,19 @@ export async function signInWithEmail(email, password) {
   return data;
 }
 
-export async function signUpWithEmail(email, password) {
+export async function signUpWithEmail(email, password, displayName = "") {
   if (!supabaseInstance) throw new Error("Serviço de autenticação indisponível no momento.");
   const redirectUrl = window.location.origin + window.location.pathname;
+  const cleanName = (displayName || "").trim();
   const { data, error } = await supabaseInstance.auth.signUp({
     email,
     password,
     options: {
-      emailRedirectTo: redirectUrl
+      emailRedirectTo: redirectUrl,
+      data: {
+        display_name: cleanName,
+        full_name: cleanName
+      }
     }
   });
   if (error) throw error;
@@ -92,33 +120,12 @@ export async function signOutUser() {
 }
 
 // ============================================================================
-// ARMAZENAMENTO LOCAL (Auxiliar)
-// ============================================================================
-
-export function getLocalInvestigators() {
-  try {
-    const raw = localStorage.getItem(LOCAL_DB_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveLocalInvestigatorsList(list) {
-  localStorage.setItem(LOCAL_DB_KEY, JSON.stringify(list));
-}
-
-// ============================================================================
-// CRUD DE INVESTIGADORES DO USUÁRIO LOGADO
+// CRUD DE INVESTIGADORES DO USUÁRIO LOGADO (100% NUVEM)
 // ============================================================================
 
 export async function listInvestigators() {
   const user = await getCurrentUser();
-  if (!supabaseInstance || !user) {
-    return getLocalInvestigators().sort(
-      (a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)
-    );
-  }
+  if (!supabaseInstance || !user) return [];
 
   const { data: invs, error } = await supabaseInstance
     .from("investigators")
@@ -141,9 +148,7 @@ export async function listInvestigators() {
 
 export async function getInvestigatorById(id) {
   const user = await getCurrentUser();
-  if (!supabaseInstance || !user) {
-    return getLocalInvestigators().find((item) => item.id === id) || null;
-  }
+  if (!supabaseInstance || !user) return null;
 
   const { data, error } = await supabaseInstance
     .from("investigators")
@@ -165,32 +170,14 @@ export async function getInvestigatorById(id) {
 
 export async function saveInvestigator(sheet) {
   const user = await getCurrentUser();
-  const nowIso = new Date().toISOString();
-
   if (!supabaseInstance || !user) {
-    const list = getLocalInvestigators();
-    const id = sheet.id || crypto.randomUUID();
-    const record = {
-      ...sheet,
-      id,
-      storage: "local",
-      created_at: sheet.created_at || nowIso,
-      updated_at: nowIso
-    };
-    const idx = list.findIndex((i) => i.id === id);
-    if (idx >= 0) {
-      list[idx] = record;
-    } else {
-      list.unshift(record);
-    }
-    saveLocalInvestigatorsList(list);
-    return record;
+    throw new Error("Você precisa estar autenticado para salvar investigadores.");
   }
 
   const invPayload = {
     user_id: sheet.user_id || user.id,
     name: sheet.name,
-    player_name: sheet.player_name || user.email?.split("@")[0] || "",
+    player_name: sheet.player_name || getUserDisplayName(user),
     age: Number(sheet.age) || 25,
     gender: sheet.gender || "",
     occupation_id: sheet.occupation_id || null,
@@ -204,7 +191,7 @@ export async function saveInvestigator(sheet) {
     fellow_investigators: sheet.fellow_investigators || []
   };
 
-  let investigatorId = sheet.id && !String(sheet.id).startsWith("local-") ? sheet.id : undefined;
+  let investigatorId = sheet.id || undefined;
 
   if (investigatorId) {
     const { error: updErr } = await supabaseInstance
@@ -353,7 +340,6 @@ export async function saveInvestigator(sheet) {
   return await getInvestigatorById(investigatorId);
 }
 
-// Atualização rápida somente dos atributos derivados/sorte durante sessão ao vivo
 export async function updateLiveInvestigatorStatus(sheet) {
   const user = await getCurrentUser();
   if (!supabaseInstance || !user || !sheet?.id) return;
@@ -389,13 +375,7 @@ export async function updateLiveInvestigatorStatus(sheet) {
 }
 
 export async function deleteInvestigator(id) {
-  const user = await getCurrentUser();
-  if (!supabaseInstance || !user) {
-    const filtered = getLocalInvestigators().filter((i) => i.id !== id);
-    saveLocalInvestigatorsList(filtered);
-    return;
-  }
-
+  if (!supabaseInstance) return;
   const { error } = await supabaseInstance
     .from("investigators")
     .delete()
@@ -404,24 +384,8 @@ export async function deleteInvestigator(id) {
   if (error) throw error;
 }
 
-export async function syncLocalToSupabase() {
-  const user = await getCurrentUser();
-  if (!supabaseInstance || !user) {
-    throw new Error("Faça login primeiro para sincronizar suas fichas.");
-  }
-  const locals = getLocalInvestigators();
-  let count = 0;
-  for (const item of locals) {
-    const copy = { ...item, id: undefined };
-    await saveInvestigator(copy);
-    count++;
-  }
-  saveLocalInvestigatorsList([]);
-  return count;
-}
-
 // ============================================================================
-// MESAS / CAMPANHAS AO VIVO & SUPABASE REALTIME
+// MESAS / CAMPANHAS AO VIVO & REALTIME
 // ============================================================================
 
 function generateInviteCode() {
@@ -437,7 +401,6 @@ export async function listMyCampaigns() {
   const user = await getCurrentUser();
   if (!supabaseInstance || !user) return [];
 
-  // Busca mesas onde o usuário é o Guardião ou onde é participante
   const { data: memberRows } = await supabaseInstance
     .from("campaign_members")
     .select("campaign_id")
@@ -469,7 +432,7 @@ export async function createCampaign({ name, description, era }) {
     .from("campaigns")
     .insert({
       keeper_id: user.id,
-      keeper_email: user.email,
+      keeper_email: getUserDisplayName(user),
       name: name.trim(),
       description: (description || "").trim(),
       era: era || "1920",
@@ -497,7 +460,6 @@ export async function joinCampaignByCode(inviteCode, investigatorId) {
     throw new Error("Nenhuma mesa encontrada com este código de convite.");
   }
 
-  // Verifica se o usuário já possui vínculo nessa mesa e atualiza ou insere
   const { data: existing } = await supabaseInstance
     .from("campaign_members")
     .select("id")
@@ -546,7 +508,7 @@ export async function leaveCampaign(campaignId) {
 }
 
 export async function getCampaignRoomData(campaignId) {
-  if (!supabaseInstance) throw new Error("Supabase não inicializado.");
+  if (!supabaseInstance) throw new Error("Serviço indisponível.");
 
   const { data: campaign, error: campErr } = await supabaseInstance
     .from("campaigns")
@@ -725,7 +687,6 @@ function normalizeFromSupabase(row) {
   return {
     id: row.id,
     user_id: row.user_id,
-    storage: "supabase",
     name: row.name,
     player_name: row.player_name || "",
     age: row.age,
