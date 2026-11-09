@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   signInWithEmail,
   signUpWithEmail,
+  onAuthStateChange,
   signOutUser,
   listInvestigators,
   getInvestigatorById,
@@ -201,6 +202,13 @@ function recalculateDraft(draft) {
 document.addEventListener("DOMContentLoaded", async () => {
   setupGlobalListeners();
   await refreshConnectionAndData();
+  onAuthStateChange(async (_event, user) => {
+    const prevId = state.currentUser?.id || null;
+    const nextId = user?.id || null;
+    if (prevId !== nextId) {
+      await refreshConnectionAndData();
+    }
+  });
 });
 
 async function refreshConnectionAndData() {
@@ -437,16 +445,36 @@ function renderAuthScreen(root) {
         } else {
           msgEl.style.color = "var(--status-success)";
           msgEl.textContent =
-            "Conta criada! Se a confirmação de e-mail estiver ativa no Supabase, confirme seu e-mail ou clique em Entrar.";
+            "Cadastro realizado com sucesso! Enviamos um link de confirmação para o seu e-mail.";
           submitBtn.disabled = false;
         }
       }
     } catch (err) {
       msgEl.style.color = "var(--crimson-bright)";
-      msgEl.textContent = err.message || "Falha na autenticação. Verifique seus dados.";
+      msgEl.textContent = translateAuthError(err.message);
       submitBtn.disabled = false;
     }
   });
+}
+
+function translateAuthError(rawMsg = "") {
+  const m = String(rawMsg).toLowerCase();
+  if (m.includes("invalid login credentials")) {
+    return "E-mail ou senha incorretos.";
+  }
+  if (m.includes("email not confirmed")) {
+    return "Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada (e o spam).";
+  }
+  if (m.includes("user already registered")) {
+    return "Este endereço de e-mail já possui uma conta cadastrada.";
+  }
+  if (m.includes("password should be at least")) {
+    return "A senha deve ter pelo menos 6 caracteres.";
+  }
+  if (m.includes("rate limit") || m.includes("security purposes")) {
+    return "Muitas tentativas recentes. Aguarde alguns instantes e tente novamente.";
+  }
+  return rawMsg || "Não foi possível concluir a autenticação. Tente novamente.";
 }
 
 // ============================================================================
@@ -768,7 +796,7 @@ function renderCampaignsList(root) {
       const created = await createCampaign({ name, era, description });
       await openCampaignRoom(created.id);
     } catch (err) {
-      alert(err.message || "Erro ao criar mesa. Certifique-se de ter executado o bloco SQL de Mesas no Supabase.");
+      alert(err.message || "Erro ao criar mesa.");
     }
   });
 

@@ -54,7 +54,7 @@ export async function getCurrentUser() {
 }
 
 export async function signInWithEmail(email, password) {
-  if (!supabaseInstance) throw new Error("Supabase não está inicializado.");
+  if (!supabaseInstance) throw new Error("Serviço de autenticação indisponível no momento.");
   const { data, error } = await supabaseInstance.auth.signInWithPassword({
     email,
     password
@@ -64,13 +64,24 @@ export async function signInWithEmail(email, password) {
 }
 
 export async function signUpWithEmail(email, password) {
-  if (!supabaseInstance) throw new Error("Supabase não está inicializado.");
+  if (!supabaseInstance) throw new Error("Serviço de autenticação indisponível no momento.");
+  const redirectUrl = window.location.origin + window.location.pathname;
   const { data, error } = await supabaseInstance.auth.signUp({
     email,
-    password
+    password,
+    options: {
+      emailRedirectTo: redirectUrl
+    }
   });
   if (error) throw error;
   return data;
+}
+
+export function onAuthStateChange(callback) {
+  if (!supabaseInstance) return;
+  supabaseInstance.auth.onAuthStateChange((event, session) => {
+    callback(event, session?.user || null);
+  });
 }
 
 export async function signOutUser() {
