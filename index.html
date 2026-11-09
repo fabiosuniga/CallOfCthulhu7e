@@ -11,6 +11,12 @@
     href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap"
     rel="stylesheet"
   />
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
   <link rel="stylesheet" href="./css/styles.css" />
 </head>
 <body>
@@ -30,10 +36,10 @@
         <span id="connectionText">Modo Local (Offline)</span>
       </div>
       <button type="button" class="btn btn-sm" id="btnOpenSupabaseModal">
-        ⚙️ Vincular Supabase / Login
+        <i class="fa-solid fa-gear"></i> Conta & Supabase
       </button>
       <button type="button" class="btn btn-primary btn-sm" id="btnNewInvestigatorTop">
-        + Novo Investigador
+        <i class="fa-solid fa-plus"></i> Novo Investigador
       </button>
     </div>
   </header>
@@ -46,13 +52,15 @@
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem;">
       <div>
         <div id="diceToastTitle" style="font-family:var(--font-display); font-size:0.9rem; font-weight:700; color:var(--text-primary);">
-          Teste 1D100
+          <i class="fa-solid fa-dice-d20"></i> Teste 1D100
         </div>
         <div id="diceToastTargets" style="font-family:var(--font-mono); font-size:0.74rem; color:var(--text-secondary); margin-top:0.15rem;">
           Reg: 50% | Dif: 25% | Ext: 10%
         </div>
       </div>
-      <button type="button" class="btn btn-sm" id="btnCloseDiceToast" style="padding:0.15rem 0.45rem;">✕</button>
+      <button type="button" class="btn btn-sm" id="btnCloseDiceToast" style="padding:0.15rem 0.45rem;" aria-label="Fechar">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
     </div>
     <div style="display:flex; align-items:center; justify-content:space-between; margin-top:0.65rem;">
       <div class="dice-roll-number" id="diceToastRoll">42</div>
@@ -66,7 +74,7 @@
 
     <div id="supabaseConfigSection">
       <p style="font-size:0.83rem; color:var(--text-secondary); margin-bottom:0.9rem;">
-        Cole a <strong>Project URL</strong> e a chave pública <strong>Anon / Publishable Key</strong> do seu projeto Supabase (nunca use a <code>service_role</code> no navegador).
+        Credenciais públicas (<strong>Project URL</strong> e <strong>Publishable / Anon Key</strong>) conectadas ao banco de dados Supabase.
       </p>
       <div style="display:flex; flex-direction:column; gap:0.75rem; margin-bottom:1rem;">
         <div>
@@ -74,12 +82,12 @@
           <input type="url" id="inputSupabaseUrl" placeholder="https://seu-projeto.supabase.co" />
         </div>
         <div>
-          <label for="inputSupabaseAnonKey">Supabase Anon / Publishable Key</label>
-          <input type="text" id="inputSupabaseAnonKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..." />
+          <label for="inputSupabaseAnonKey">Supabase Publishable / Anon Key</label>
+          <input type="text" id="inputSupabaseAnonKey" placeholder="sb_publishable_..." />
         </div>
         <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
-          <button type="button" class="btn btn-sm" id="btnClearSupabaseCfg">Usar Modo Local</button>
-          <button type="button" class="btn btn-primary btn-sm" id="btnSaveSupabaseCfg">Salvar & Conectar</button>
+          <button type="button" class="btn btn-sm" id="btnClearSupabaseCfg">Restaurar Padrão</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btnSaveSupabaseCfg">Salvar & Reconectar</button>
         </div>
       </div>
     </div>
@@ -103,8 +111,12 @@
           </div>
           <div id="authFeedbackMsg" style="font-size:0.8rem; color:var(--crimson-bright); min-height:1.2rem;"></div>
           <div style="display:flex; gap:0.5rem; justify-content:space-between; flex-wrap:wrap;">
-            <button type="button" class="btn btn-outline-crimson btn-sm" id="btnSignUp">Criar Conta</button>
-            <button type="button" class="btn btn-primary btn-sm" id="btnSignIn">Entrar na Conta</button>
+            <button type="button" class="btn btn-outline-crimson btn-sm" id="btnSignUp">
+              <i class="fa-solid fa-user-plus"></i> Criar Conta
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" id="btnSignIn">
+              <i class="fa-solid fa-right-to-bracket"></i> Entrar na Conta
+            </button>
           </div>
         </div>
       </div>
@@ -115,9 +127,11 @@
         </p>
         <div style="display:flex; gap:0.5rem; justify-content:space-between; flex-wrap:wrap;">
           <button type="button" class="btn btn-sm" id="btnSyncLocalSheets">
-            ☁️ Sincronizar Fichas Locais p/ Supabase
+            <i class="fa-solid fa-cloud-arrow-up"></i> Sincronizar Fichas Locais p/ Supabase
           </button>
-          <button type="button" class="btn btn-outline-crimson btn-sm" id="btnSignOut">Sair da Conta</button>
+          <button type="button" class="btn btn-outline-crimson btn-sm" id="btnSignOut">
+            <i class="fa-solid fa-right-from-bracket"></i> Sair da Conta
+          </button>
         </div>
       </div>
     </div>
