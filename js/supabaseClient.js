@@ -1,16 +1,21 @@
 // ============================================================================
-// CLIENTE SUPABASE + PERSISTÊNCIA RELACIONAL & FALLBACK LOCAL (supabaseClient.js)
+// CLIENTE SUPABASE + PERSISTÊNCIA RELACIONAL, MESAS & REALTIME (supabaseClient.js)
 // ============================================================================
 
 import { getSupabaseConfig, isSupabaseConfigured } from "./config.js";
 
 let supabaseInstance = null;
+let activeRealtimeChannel = null;
 const LOCAL_DB_KEY = "coc7e_local_investigators_v1";
 
 export async function initSupabase() {
   if (!isSupabaseConfigured()) {
     supabaseInstance = null;
     return null;
+  }
+
+  if (supabaseInstance) {
+    return supabaseInstance;
   }
 
   const { url, anonKey } = getSupabaseConfig();
@@ -49,7 +54,7 @@ export async function getCurrentUser() {
 }
 
 export async function signInWithEmail(email, password) {
-  if (!supabaseInstance) throw new Error("Supabase ainda não está configurado.");
+  if (!supabaseInstance) throw new Error("Supabase não está inicializado.");
   const { data, error } = await supabaseInstance.auth.signInWithPassword({
     email,
     password
@@ -59,7 +64,7 @@ export async function signInWithEmail(email, password) {
 }
 
 export async function signUpWithEmail(email, password) {
-  if (!supabaseInstance) throw new Error("Supabase ainda não está configurado.");
+  if (!supabaseInstance) throw new Error("Supabase não está inicializado.");
   const { data, error } = await supabaseInstance.auth.signUp({
     email,
     password
@@ -70,12 +75,13 @@ export async function signUpWithEmail(email, password) {
 
 export async function signOutUser() {
   if (!supabaseInstance) return;
+  await unsubscribeFromCampaignRoom();
   const { error } = await supabaseInstance.auth.signOut();
   if (error) throw error;
 }
 
 // ============================================================================
-// ARMAZENAMENTO LOCAL (Para uso antes de vincular o Supabase no GitHub Pages)
+// ARMAZENAMENTO LOCAL (Auxiliar)
 // ============================================================================
 
 export function getLocalInvestigators() {
@@ -92,7 +98,7 @@ function saveLocalInvestigatorsList(list) {
 }
 
 // ============================================================================
-// CRUD COMPLETO DE INVESTIGADORES (Supabase Relacional ou Modo Local)
+// CRUD DE INVESTIGADORES DO USUÁRIO LOGADO
 // ============================================================================
 
 export async function listInvestigators() {
@@ -114,6 +120,7 @@ export async function listInvestigators() {
       investigator_backstory (*),
       investigator_weapons (*)
     `)
+    .eq("user_id", user.id)
     .order("updated_at", { ascending: false });
 
   if (error) throw error;
@@ -149,7 +156,6 @@ export async function saveInvestigator(sheet) {
   const user = await getCurrentUser();
   const nowIso = new Date().toISOString();
 
-  // Caso ainda não esteja logado no Supabase, salva no LocalStorage
   if (!supabaseInstance || !user) {
     const list = getLocalInvestigators();
     const id = sheet.id || crypto.randomUUID();
@@ -170,11 +176,10 @@ export async function saveInvestigator(sheet) {
     return record;
   }
 
-  // Salvamento relacional nas 7 tabelas do schema.sql no Supabase
   const invPayload = {
-    user_id: user.id,
+    user_id: sheet.user_id || user.id,
     name: sheet.name,
-    player_name: sheet.player_name || "",
+    player_name: sheet.player_name || user.email?.split("@")[0] || "",
     age: Number(sheet.age) || 25,
     gender: sheet.gender || "",
     occupation_id: sheet.occupation_id || null,
@@ -263,7 +268,7 @@ export async function saveInvestigator(sheet) {
     });
   if (finErr) throw finErr;
 
-  // 5. investigator_skills (Recria lista limpa do investigador)
+  // 5. investigator_skills
   await supabaseInstance
     .from("investigator_skills")
     .delete()
@@ -337,6 +342,41 @@ export async function saveInvestigator(sheet) {
   return await getInvestigatorById(investigatorId);
 }
 
+// Atualização rápida somente dos atributos derivados/sorte durante sessão ao vivo
+export async function updateLiveInvestigatorStatus(sheet) {
+  const user = await getCurrentUser();
+  if (!supabaseInstance || !user || !sheet?.id) return;
+
+  const d = sheet.derived;
+  const c = sheet.characteristics;
+
+  await Promise.all([
+    supabaseInstance.from("investigator_derived").upsert({
+      investigator_id: sheet.id,
+      hp: Number(d.hp) || 0,
+      max_hp: Number(d.max_hp) || 1,
+      mp: Number(d.mp) || 0,
+      max_mp: Number(d.max_mp) || 0,
+      sanity: Number(d.sanity) || 0,
+      starting_sanity: Number(d.starting_sanity) || 0,
+      max_sanity: Number(d.max_sanity) || 99,
+      mov: Number(d.mov) || 8,
+      build: Number(d.build) || 0,
+      damage_bonus: String(d.damage_bonus || "0"),
+      major_wound: Boolean(d.major_wound),
+      unconscious: Boolean(d.unconscious),
+      dying: Boolean(d.dying),
+      temp_insanity: Boolean(d.temp_insanity),
+      indef_insanity: Boolean(d.indef_insanity),
+      out_of_luck: Boolean(d.out_of_luck)
+    }),
+    supabaseInstance
+      .from("investigator_characteristics")
+      .update({ luck: Number(c.luck) || 0 })
+      .eq("investigator_id", sheet.id)
+  ]);
+}
+
 export async function deleteInvestigator(id) {
   const user = await getCurrentUser();
   if (!supabaseInstance || !user) {
@@ -356,7 +396,7 @@ export async function deleteInvestigator(id) {
 export async function syncLocalToSupabase() {
   const user = await getCurrentUser();
   if (!supabaseInstance || !user) {
-    throw new Error("Faça login no Supabase primeiro para sincronizar suas fichas.");
+    throw new Error("Faça login primeiro para sincronizar suas fichas.");
   }
   const locals = getLocalInvestigators();
   let count = 0;
@@ -367,6 +407,273 @@ export async function syncLocalToSupabase() {
   }
   saveLocalInvestigatorsList([]);
   return count;
+}
+
+// ============================================================================
+// MESAS / CAMPANHAS AO VIVO & SUPABASE REALTIME
+// ============================================================================
+
+function generateInviteCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+export async function listMyCampaigns() {
+  const user = await getCurrentUser();
+  if (!supabaseInstance || !user) return [];
+
+  // Busca mesas onde o usuário é o Guardião ou onde é participante
+  const { data: memberRows } = await supabaseInstance
+    .from("campaign_members")
+    .select("campaign_id")
+    .eq("user_id", user.id);
+
+  const memberCampIds = (memberRows || []).map((r) => r.campaign_id);
+
+  const { data: allCamps, error } = await supabaseInstance
+    .from("campaigns")
+    .select(`
+      *,
+      campaign_members (id, user_id, investigator_id, role)
+    `)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return (allCamps || []).filter(
+    (c) => c.keeper_id === user.id || memberCampIds.includes(c.id)
+  );
+}
+
+export async function createCampaign({ name, description, era }) {
+  const user = await getCurrentUser();
+  if (!supabaseInstance || !user) throw new Error("Usuário não autenticado.");
+
+  const invite_code = generateInviteCode();
+  const { data, error } = await supabaseInstance
+    .from("campaigns")
+    .insert({
+      keeper_id: user.id,
+      keeper_email: user.email,
+      name: name.trim(),
+      description: (description || "").trim(),
+      era: era || "1920",
+      invite_code
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function joinCampaignByCode(inviteCode, investigatorId) {
+  const user = await getCurrentUser();
+  if (!supabaseInstance || !user) throw new Error("Usuário não autenticado.");
+
+  const cleanCode = (inviteCode || "").trim().toUpperCase();
+  const { data: camp, error: findErr } = await supabaseInstance
+    .from("campaigns")
+    .select("*")
+    .eq("invite_code", cleanCode)
+    .single();
+
+  if (findErr || !camp) {
+    throw new Error("Nenhuma mesa encontrada com este código de convite.");
+  }
+
+  // Verifica se o usuário já possui vínculo nessa mesa e atualiza ou insere
+  const { data: existing } = await supabaseInstance
+    .from("campaign_members")
+    .select("id")
+    .eq("campaign_id", camp.id)
+    .eq("user_id", user.id);
+
+  if (existing && existing.length > 0) {
+    const { error: updErr } = await supabaseInstance
+      .from("campaign_members")
+      .update({ investigator_id: investigatorId })
+      .eq("id", existing[0].id);
+    if (updErr) throw updErr;
+  } else {
+    const { error: insErr } = await supabaseInstance
+      .from("campaign_members")
+      .insert({
+        campaign_id: camp.id,
+        user_id: user.id,
+        investigator_id: investigatorId,
+        role: camp.keeper_id === user.id ? "keeper" : "player"
+      });
+    if (insErr) throw insErr;
+  }
+
+  return camp;
+}
+
+export async function deleteCampaign(campaignId) {
+  if (!supabaseInstance) return;
+  const { error } = await supabaseInstance
+    .from("campaigns")
+    .delete()
+    .eq("id", campaignId);
+  if (error) throw error;
+}
+
+export async function leaveCampaign(campaignId) {
+  const user = await getCurrentUser();
+  if (!supabaseInstance || !user) return;
+  const { error } = await supabaseInstance
+    .from("campaign_members")
+    .delete()
+    .eq("campaign_id", campaignId)
+    .eq("user_id", user.id);
+  if (error) throw error;
+}
+
+export async function getCampaignRoomData(campaignId) {
+  if (!supabaseInstance) throw new Error("Supabase não inicializado.");
+
+  const { data: campaign, error: campErr } = await supabaseInstance
+    .from("campaigns")
+    .select("*")
+    .eq("id", campaignId)
+    .single();
+  if (campErr) throw campErr;
+
+  const { data: members, error: memErr } = await supabaseInstance
+    .from("campaign_members")
+    .select(`
+      id,
+      user_id,
+      role,
+      investigator_id,
+      investigators (
+        *,
+        investigator_characteristics (*),
+        investigator_derived (*),
+        investigator_finances (*),
+        investigator_skills (*)
+      )
+    `)
+    .eq("campaign_id", campaignId);
+  if (memErr) throw memErr;
+
+  const { data: messages, error: msgErr } = await supabaseInstance
+    .from("campaign_messages")
+    .select("*")
+    .eq("campaign_id", campaignId)
+    .order("created_at", { ascending: true })
+    .limit(100);
+  if (msgErr) throw msgErr;
+
+  const normalizedMembers = (members || []).map((m) => ({
+    member_id: m.id,
+    user_id: m.user_id,
+    role: m.role,
+    investigator_id: m.investigator_id,
+    investigator: m.investigators ? normalizeFromSupabase(m.investigators) : null
+  }));
+
+  return {
+    campaign,
+    members: normalizedMembers,
+    messages: messages || []
+  };
+}
+
+export async function sendCampaignMessage({
+  campaign_id,
+  sender_name,
+  sender_role = "player",
+  message_type = "chat",
+  content = "",
+  roll_result = null,
+  roll_target = null,
+  roll_level = null,
+  roll_code = null,
+  is_keeper_secret = false
+}) {
+  const user = await getCurrentUser();
+  if (!supabaseInstance || !user) throw new Error("Usuário não autenticado.");
+
+  const { data, error } = await supabaseInstance
+    .from("campaign_messages")
+    .insert({
+      campaign_id,
+      user_id: user.id,
+      sender_name,
+      sender_role,
+      message_type,
+      content,
+      roll_result,
+      roll_target,
+      roll_level,
+      roll_code,
+      is_keeper_secret
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function subscribeToCampaignRoom(campaignId, onRoomChange) {
+  if (!supabaseInstance) return;
+  await unsubscribeFromCampaignRoom();
+
+  activeRealtimeChannel = supabaseInstance
+    .channel(`coc7e_room_${campaignId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "campaign_messages",
+        filter: `campaign_id=eq.${campaignId}`
+      },
+      () => onRoomChange("messages")
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "campaign_members",
+        filter: `campaign_id=eq.${campaignId}`
+      },
+      () => onRoomChange("members")
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "investigator_derived"
+      },
+      () => onRoomChange("status")
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "investigator_characteristics"
+      },
+      () => onRoomChange("status")
+    )
+    .subscribe();
+}
+
+export async function unsubscribeFromCampaignRoom() {
+  if (supabaseInstance && activeRealtimeChannel) {
+    await supabaseInstance.removeChannel(activeRealtimeChannel);
+    activeRealtimeChannel = null;
+  }
 }
 
 function normalizeFromSupabase(row) {
@@ -406,6 +713,7 @@ function normalizeFromSupabase(row) {
 
   return {
     id: row.id,
+    user_id: row.user_id,
     storage: "supabase",
     name: row.name,
     player_name: row.player_name || "",
@@ -428,4 +736,3 @@ function normalizeFromSupabase(row) {
     weapons: (row.investigator_weapons || []).sort((a, b) => a.sort_order - b.sort_order)
   };
 }
-

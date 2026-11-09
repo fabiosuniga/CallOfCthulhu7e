@@ -1,14 +1,8 @@
 // ============================================================================
 // APLICAÇÃO PRINCIPAL — CHAMADO DE CTHULHU 7ª EDIÇÃO (js/app.js)
-// Fluxo Completo: Dashboard -> Wizard de 5 Etapas -> Ficha Editável (Frente/Verso)
+// Fluxo Completo: Login Supabase -> Meus Investigadores -> Mesas Ao Vivo -> Wizard 5 Etapas -> Ficha
 // ============================================================================
 
-import {
-  getSupabaseConfig,
-  saveSupabaseConfig,
-  clearSupabaseConfig,
-  isSupabaseConfigured
-} from "./config.js";
 import {
   initSupabase,
   getCurrentUser,
@@ -18,9 +12,19 @@ import {
   listInvestigators,
   getInvestigatorById,
   saveInvestigator,
+  updateLiveInvestigatorStatus,
   deleteInvestigator,
   syncLocalToSupabase,
-  getLocalInvestigators
+  getLocalInvestigators,
+  listMyCampaigns,
+  createCampaign,
+  joinCampaignByCode,
+  deleteCampaign,
+  leaveCampaign,
+  getCampaignRoomData,
+  sendCampaignMessage,
+  subscribeToCampaignRoom,
+  unsubscribeFromCampaignRoom
 } from "./supabaseClient.js";
 import {
   PRIMARY_CHARACTERISTICS,
@@ -44,13 +48,18 @@ import {
 // ESTADO DA APLICAÇÃO
 // ============================================================================
 const state = {
-  view: "dashboard", // 'dashboard' | 'wizard' | 'sheet'
+  authMode: "login", // 'login' | 'signup'
+  view: "dashboard", // 'dashboard' | 'campaigns' | 'campaign_room' | 'wizard' | 'sheet'
   wizardStep: 1,
   sheetTab: "front", // 'front' | 'back'
   investigators: [],
+  campaigns: [],
+  activeCampaignRoom: null, // { campaign, members, messages }
+  keeperSecretMode: true, // Guardião rola escondido por padrão
   currentUser: null,
   draft: null,
-  activeSheet: null
+  activeSheet: null,
+  returnToCampaignId: null
 };
 
 // Cria um rascunho em branco para o Wizard de 5 Etapas
@@ -95,7 +104,7 @@ function createBlankDraft() {
   return {
     id: null,
     name: "",
-    player_name: "",
+    player_name: state.currentUser?.email?.split("@")[0] || "",
     age,
     gender: "",
     era: "1920",
@@ -126,12 +135,7 @@ function createBlankDraft() {
         malfunction: "—"
       }
     ],
-    fellow_investigators: [
-      { character: "", player: "" },
-      { character: "", player: "" },
-      { character: "", player: "" },
-      { character: "", player: "" }
-    ]
+    fellow_investigators: []
   };
 }
 
@@ -180,7 +184,6 @@ function recalculateDraft(draft) {
 
   draft.finances = calcFinances(creditVal, draft.era);
 
-  // Atualiza valor regular do ataque Desarmado conforme Lutar (Brigar)
   const brawl = draft.skills.fighting_brawl;
   const brawlTotal =
     (brawl?.base_value || 25) +
@@ -193,7 +196,7 @@ function recalculateDraft(draft) {
 }
 
 // ============================================================================
-// INICIALIZAÇÃO E EVENTOS GLOBAIS
+// INICIALIZAÇÃO E NAVEGAÇÃO SUPERIOR
 // ============================================================================
 document.addEventListener("DOMContentLoaded", async () => {
   setupGlobalListeners();
@@ -203,137 +206,83 @@ document.addEventListener("DOMContentLoaded", async () => {
 async function refreshConnectionAndData() {
   await initSupabase();
   state.currentUser = await getCurrentUser();
-  updateConnectionBadge();
-  state.investigators = await listInvestigators();
+  updateTopbarVisibility();
+
+  if (state.currentUser) {
+    state.investigators = await listInvestigators();
+  } else {
+    state.investigators = [];
+    state.campaigns = [];
+    state.activeCampaignRoom = null;
+  }
   render();
 }
 
-function updateConnectionBadge() {
-  const badge = document.getElementById("connectionBadge");
-  const txt = document.getElementById("connectionText");
-  const configured = isSupabaseConfigured();
+function updateTopbarVisibility() {
+  const nav = document.getElementById("topbarAuthActions");
+  const emailSpan = document.getElementById("topUserEmail");
+  if (!nav) return;
 
-  if (configured && state.currentUser) {
-    badge.classList.add("connected");
-    txt.textContent = `Supabase: ${state.currentUser.email}`;
-  } else if (configured) {
-    badge.classList.remove("connected");
-    txt.textContent = "Supabase Configurado (Faça Login)";
+  if (state.currentUser) {
+    nav.style.display = "flex";
+    if (emailSpan) {
+      emailSpan.innerHTML = `<i class="fa-solid fa-user-check" style="color:var(--status-success); margin-right:0.3rem;"></i>${escapeHtml(
+        state.currentUser.email
+      )}`;
+    }
   } else {
-    badge.classList.remove("connected");
-    txt.textContent = "Modo Local (Pronto p/ GitHub Pages)";
+    nav.style.display = "none";
   }
 }
 
 function setupGlobalListeners() {
-  document.getElementById("btnHomeBrand").addEventListener("click", async () => {
+  document.getElementById("btnHomeBrand")?.addEventListener("click", async () => {
+    if (!state.currentUser) return;
+    await unsubscribeFromCampaignRoom();
     state.view = "dashboard";
     state.investigators = await listInvestigators();
     render();
   });
 
-  document.getElementById("btnNewInvestigatorTop").addEventListener("click", () => {
+  document.getElementById("btnNavInvestigators")?.addEventListener("click", async () => {
+    if (!state.currentUser) return;
+    await unsubscribeFromCampaignRoom();
+    state.view = "dashboard";
+    state.investigators = await listInvestigators();
+    render();
+  });
+
+  document.getElementById("btnNavCampaigns")?.addEventListener("click", async () => {
+    if (!state.currentUser) return;
+    await unsubscribeFromCampaignRoom();
+    state.view = "campaigns";
+    state.campaigns = await listMyCampaigns();
+    state.investigators = await listInvestigators();
+    render();
+  });
+
+  document.getElementById("btnNewInvestigatorTop")?.addEventListener("click", async () => {
+    if (!state.currentUser) return;
+    await unsubscribeFromCampaignRoom();
     startNewInvestigatorWizard();
   });
 
-  document.getElementById("btnCloseDiceToast").addEventListener("click", () => {
-    document.getElementById("diceToast").classList.add("hidden");
-  });
-
-  // Modal Supabase
-  const dialog = document.getElementById("supabaseDialog");
-  document.getElementById("btnOpenSupabaseModal").addEventListener("click", () => {
-    const cfg = getSupabaseConfig();
-    document.getElementById("inputSupabaseUrl").value = cfg.url || "";
-    document.getElementById("inputSupabaseAnonKey").value = cfg.anonKey || "";
-    refreshAuthModalState();
-    dialog.showModal();
-  });
-
-  document.getElementById("btnCloseSupabaseModal").addEventListener("click", () => {
-    dialog.close();
-  });
-
-  document.getElementById("btnSaveSupabaseCfg").addEventListener("click", async () => {
-    const url = document.getElementById("inputSupabaseUrl").value;
-    const key = document.getElementById("inputSupabaseAnonKey").value;
-    saveSupabaseConfig(url, key);
-    await refreshConnectionAndData();
-    refreshAuthModalState();
-    setAuthFeedback("Configuração do Supabase salva! Agora você pode entrar ou criar sua conta.", true);
-  });
-
-  document.getElementById("btnClearSupabaseCfg").addEventListener("click", async () => {
-    clearSupabaseConfig();
-    await refreshConnectionAndData();
-    refreshAuthModalState();
-    setAuthFeedback("Modo Local ativado.", true);
-  });
-
-  document.getElementById("btnSignIn").addEventListener("click", async () => {
-    const email = document.getElementById("inputAuthEmail").value.trim();
-    const pass = document.getElementById("inputAuthPassword").value;
-    try {
-      setAuthFeedback("Autenticando...", true);
-      await signInWithEmail(email, pass);
-      await refreshConnectionAndData();
-      refreshAuthModalState();
-      setAuthFeedback("Login realizado com sucesso!", true);
-    } catch (err) {
-      setAuthFeedback(err.message || "Erro ao fazer login.", false);
-    }
-  });
-
-  document.getElementById("btnSignUp").addEventListener("click", async () => {
-    const email = document.getElementById("inputAuthEmail").value.trim();
-    const pass = document.getElementById("inputAuthPassword").value;
-    try {
-      setAuthFeedback("Criando conta no Supabase Auth...", true);
-      await signUpWithEmail(email, pass);
-      await refreshConnectionAndData();
-      refreshAuthModalState();
-      setAuthFeedback("Conta criada! Verifique seu e-mail (se confirmação estiver ativa) ou entre.", true);
-    } catch (err) {
-      setAuthFeedback(err.message || "Erro ao criar conta.", false);
-    }
-  });
-
-  document.getElementById("btnSignOut").addEventListener("click", async () => {
+  document.getElementById("btnTopSignOut")?.addEventListener("click", async () => {
     await signOutUser();
     await refreshConnectionAndData();
-    refreshAuthModalState();
   });
 
-  document.getElementById("btnSyncLocalSheets").addEventListener("click", async () => {
-    try {
-      const count = await syncLocalToSupabase();
-      await refreshConnectionAndData();
-      alert(`${count} ficha(s) sincronizada(s) com sucesso para o Supabase!`);
-    } catch (err) {
-      alert(err.message);
-    }
+  document.getElementById("btnCloseDiceToast")?.addEventListener("click", () => {
+    document.getElementById("diceToast").classList.add("hidden");
   });
 }
 
-function setAuthFeedback(msg, isOk = false) {
-  const el = document.getElementById("authFeedbackMsg");
-  el.textContent = msg;
-  el.style.color = isOk ? "var(--status-success)" : "var(--crimson-bright)";
-}
-
-function refreshAuthModalState() {
-  const loggedIn = Boolean(state.currentUser);
-  document.getElementById("authLoggedOutView").style.display = loggedIn ? "none" : "block";
-  document.getElementById("authLoggedInView").style.display = loggedIn ? "block" : "none";
-  if (loggedIn) {
-    document.getElementById("authUserEmailDisplay").textContent = state.currentUser.email;
-  }
-}
-
-export function triggerD100Toast(label, targetVal) {
-  const res = evaluateD100Roll(targetVal);
+export function triggerD100Toast(label, targetVal, customResult = null) {
+  const res = customResult || evaluateD100Roll(targetVal);
   const toast = document.getElementById("diceToast");
-  document.getElementById("diceToastTitle").innerHTML = `<i class="fa-solid fa-dice-d20" style="color:var(--crimson-bright); margin-right:0.35rem;"></i> ${escapeHtml(label)}`;
+  document.getElementById("diceToastTitle").innerHTML = `<i class="fa-solid fa-dice-d20" style="color:var(--crimson-bright); margin-right:0.35rem;"></i> ${escapeHtml(
+    label
+  )}`;
   document.getElementById("diceToastTargets").textContent = `Regular: ${res.target}% | Difícil: ${res.half}% | Extremo: ${res.fifth}%`;
   document.getElementById("diceToastRoll").textContent = String(res.roll).padStart(2, "0");
 
@@ -342,6 +291,7 @@ export function triggerD100Toast(label, targetVal) {
   badge.textContent = res.level;
 
   toast.classList.remove("hidden");
+  return res;
 }
 
 function startNewInvestigatorWizard() {
@@ -353,17 +303,150 @@ function startNewInvestigatorWizard() {
 }
 
 // ============================================================================
-// RENDERIZADOR PRINCIPAL
+// RENDERIZADOR CENTRAL (COM PROTEÇÃO DE ROTA SUPABASE AUTH)
 // ============================================================================
 function render() {
   const root = document.getElementById("appRoot");
+  updateTopbarVisibility();
+
+  // Rota protegida: se não estiver logado no Supabase Auth, exibe a Tela de Login
+  if (!state.currentUser) {
+    renderAuthScreen(root);
+    return;
+  }
+
   if (state.view === "wizard") {
     renderWizard(root);
   } else if (state.view === "sheet" && state.activeSheet) {
     renderEditableSheet(root, state.activeSheet);
+  } else if (state.view === "campaigns") {
+    renderCampaignsList(root);
+  } else if (state.view === "campaign_room" && state.activeCampaignRoom) {
+    renderCampaignRoom(root);
   } else {
     renderDashboard(root);
   }
+}
+
+// ============================================================================
+// 0. TELA DE LOGIN & CADASTRO (ROTA PROTEGIDA SUPABASE AUTH)
+// ============================================================================
+function renderAuthScreen(root) {
+  const isLogin = state.authMode === "login";
+
+  root.innerHTML = `
+    <div class="auth-wrapper">
+      <section class="ornate-panel" style="padding:1.85rem;">
+        <div style="text-align:center; margin-bottom:1.35rem;">
+          <img
+            src="./assets/app-icon-512.png"
+            alt="Logo Chamado de Cthulhu"
+            style="width:76px; height:76px; border-radius:50%; border:2px solid var(--crimson-primary); box-shadow:0 0 22px rgba(220,20,30,0.5); margin-bottom:0.65rem;"
+          />
+          <h1 style="font-family:var(--font-display); font-size:1.35rem; letter-spacing:0.08em; text-transform:uppercase;">
+            Chamado de Cthulhu
+          </h1>
+          <p style="font-size:0.82rem; color:var(--text-secondary); margin-top:0.2rem;">
+            Acesse sua conta para gerenciar seus Investigadores e participar de Mesas Ao Vivo.
+          </p>
+        </div>
+
+        <div class="auth-tabs">
+          <button
+            type="button"
+            class="btn ${isLogin ? "btn-primary" : ""}"
+            id="btnTabLoginMode"
+          >
+            <i class="fa-solid fa-right-to-bracket"></i> Entrar
+          </button>
+          <button
+            type="button"
+            class="btn ${!isLogin ? "btn-primary" : ""}"
+            id="btnTabSignupMode"
+          >
+            <i class="fa-solid fa-user-plus"></i> Criar Conta
+          </button>
+        </div>
+
+        <form id="authMainForm" style="display:flex; flex-direction:column; gap:0.9rem;">
+          <div>
+            <label for="authEmailInput">E-mail do Investigador / Guardião</label>
+            <input
+              type="email"
+              id="authEmailInput"
+              required
+              placeholder="seu-email@dominio.com"
+              autocomplete="email"
+            />
+          </div>
+          <div>
+            <label for="authPassInput">Senha (mínimo 6 caracteres)</label>
+            <input
+              type="password"
+              id="authPassInput"
+              required
+              minlength="6"
+              placeholder="••••••••"
+              autocomplete="${isLogin ? "current-password" : "new-password"}"
+            />
+          </div>
+
+          <div
+            id="authScreenFeedback"
+            style="font-size:0.82rem; min-height:1.25rem; color:var(--crimson-bright);"
+          ></div>
+
+          <button type="submit" class="btn btn-primary" id="btnAuthSubmit" style="padding:0.7rem;">
+            <i class="fa-solid ${isLogin ? "fa-right-to-bracket" : "fa-user-plus"}"></i>
+            ${isLogin ? "Entrar nos Arquivos" : "Registrar Conta"}
+          </button>
+        </form>
+      </section>
+    </div>
+  `;
+
+  root.querySelector("#btnTabLoginMode").addEventListener("click", () => {
+    state.authMode = "login";
+    render();
+  });
+
+  root.querySelector("#btnTabSignupMode").addEventListener("click", () => {
+    state.authMode = "signup";
+    render();
+  });
+
+  root.querySelector("#authMainForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = root.querySelector("#authEmailInput").value.trim();
+    const pass = root.querySelector("#authPassInput").value;
+    const msgEl = root.querySelector("#authScreenFeedback");
+    const submitBtn = root.querySelector("#btnAuthSubmit");
+
+    submitBtn.disabled = true;
+    msgEl.style.color = "var(--text-secondary)";
+    msgEl.textContent = isLogin ? "Autenticando..." : "Criando sua conta...";
+
+    try {
+      if (isLogin) {
+        await signInWithEmail(email, pass);
+        await refreshConnectionAndData();
+      } else {
+        const res = await signUpWithEmail(email, pass);
+        if (res?.session) {
+          await refreshConnectionAndData();
+        } else {
+          msgEl.style.color = "var(--status-success)";
+          msgEl.textContent =
+            "Conta criada! Se a confirmação de e-mail estiver ativa no Supabase, confirme seu e-mail ou clique em Entrar.";
+          submitBtn.disabled = false;
+        }
+      }
+    } catch (err) {
+      msgEl.style.color = "var(--crimson-bright)";
+      msgEl.textContent = err.message || "Falha na autenticação. Verifique seus dados.";
+      submitBtn.disabled = false;
+    }
+  });
 }
 
 // ============================================================================
@@ -371,41 +454,43 @@ function render() {
 // ============================================================================
 function renderDashboard(root) {
   const localCount = getLocalInvestigators().length;
-  const canSync = state.currentUser && localCount > 0;
 
   root.innerHTML = `
     <section class="ornate-panel">
       <div class="hero-header">
         <div>
-          <h1 style="font-family:var(--font-display); font-size:1.55rem; letter-spacing:0.06em;">
-            Arquivos da Sociedade de Investigadores
+          <h1 style="font-family:var(--font-display); font-size:1.5rem; letter-spacing:0.06em;">
+            Meus Investigadores
           </h1>
-          <p style="color:var(--text-secondary); font-size:0.9rem; margin-top:0.25rem;">
-            Crie investigadores seguindo rigorosamente as 5 etapas oficiais da 7ª Edição de Chamado de Cthulhu e gerencie suas fichas completas (Frente e Verso).
+          <p style="color:var(--text-secondary); font-size:0.88rem; margin-top:0.25rem;">
+            Gerencie seus personagens da 7ª Edição ou leve-os para uma Mesa de Campanha ao vivo.
           </p>
         </div>
         <div style="display:flex; gap:0.65rem; flex-wrap:wrap;">
           ${
-            canSync
-              ? `<button type="button" class="btn btn-outline-crimson" id="btnDashSync"><i class="fa-solid fa-cloud-arrow-up"></i> Sincronizar ${localCount} Ficha(s) Local p/ Supabase</button>`
+            localCount > 0
+              ? `<button type="button" class="btn btn-outline-crimson" id="btnDashSync"><i class="fa-solid fa-cloud-arrow-up"></i> Sincronizar ${localCount} Ficha(s) Local</button>`
               : ""
           }
-          <button type="button" class="btn" id="btnCreateSample"><i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Investigador Exemplo (Anos 1920)</button>
+          <button type="button" class="btn" id="btnGoCampaigns"><i class="fa-solid fa-users-viewfinder"></i> Ir para Mesas Ao Vivo</button>
+          <button type="button" class="btn" id="btnCreateSample"><i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Investigador Exemplo</button>
           <button type="button" class="btn btn-primary" id="btnDashNew"><i class="fa-solid fa-plus"></i> Criar Novo Investigador (5 Etapas)</button>
         </div>
       </div>
 
-      <div class="section-banner">Fichas Registradas (${state.investigators.length})</div>
+      <div class="section-banner">Fichas da Sua Conta (${state.investigators.length})</div>
 
       ${
         state.investigators.length === 0
           ? `
         <div style="text-align:center; padding:2.5rem 1rem; color:var(--text-secondary);">
-          <p style="font-size:1rem; margin-bottom:0.85rem;">Nenhum investigador registrado ainda.</p>
+          <p style="font-size:1rem; margin-bottom:0.85rem;">Você ainda não possui nenhum investigador salvo nesta conta.</p>
           <p style="font-size:0.84rem; color:var(--text-muted); max-width:540px; margin:0 auto 1.25rem;">
-            Comece criando seu investigador passo a passo com validação de Atributos, Faixa Etária, Ocupação, 46 Perícias Oficiais, Conexão-Chave e Finanças.
+            Crie seu investigador passo a passo seguindo as 5 etapas oficiais ou gere um investigador de exemplo para testar.
           </p>
-          <button type="button" class="btn btn-primary" id="btnEmptyCreate">Iniciar Criação (Etapa 1 de 5)</button>
+          <button type="button" class="btn btn-primary" id="btnEmptyCreate">
+            <i class="fa-solid fa-plus"></i> Iniciar Criação (Etapa 1 de 5)
+          </button>
         </div>
       `
           : `
@@ -422,15 +507,10 @@ function renderDashboard(root) {
                   <div class="inv-card-header">
                     <div>
                       <h3 class="inv-card-name">${escapeHtml(inv.name || "Sem Nome")}</h3>
-                      <div class="inv-card-occ">${escapeHtml(occName)} • ${inv.age || 25} anos (${inv.era === "modern" ? "Era Moderna" : "Década de 1920"})</div>
+                      <div class="inv-card-occ">${escapeHtml(occName)} • ${inv.age || 25} anos (${
+                inv.era === "modern" ? "Era Moderna" : "Década de 1920"
+              })</div>
                     </div>
-                    <span style="font-size:0.7rem; padding:0.15rem 0.45rem; border-radius:4px; border:1px solid var(--border-ornate); color:var(--text-secondary);">
-                      ${
-                        inv.storage === "supabase"
-                          ? `<i class="fa-solid fa-cloud"></i> Supabase`
-                          : `<i class="fa-solid fa-hard-drive"></i> Local`
-                      }
-                    </span>
                   </div>
 
                   <div class="inv-stat-pills" style="margin-top:0.85rem;">
@@ -455,7 +535,7 @@ function renderDashboard(root) {
 
                 <div style="display:flex; justify-content:space-between; gap:0.5rem; padding-top:0.75rem; border-top:1px solid var(--border-subtle);">
                   <button type="button" class="btn btn-primary btn-sm" data-open-id="${inv.id}" style="flex:1;">
-                    <i class="fa-solid fa-scroll"></i> Abrir Ficha Editável
+                    <i class="fa-solid fa-scroll"></i> Abrir Ficha
                   </button>
                   <button type="button" class="btn btn-sm" data-edit-id="${inv.id}" title="Editar no Wizard">
                     <i class="fa-solid fa-pen-to-square"></i> Wizard
@@ -477,10 +557,17 @@ function renderDashboard(root) {
   root.querySelector("#btnDashNew")?.addEventListener("click", startNewInvestigatorWizard);
   root.querySelector("#btnEmptyCreate")?.addEventListener("click", startNewInvestigatorWizard);
   root.querySelector("#btnCreateSample")?.addEventListener("click", createSampleInvestigator);
+  root.querySelector("#btnGoCampaigns")?.addEventListener("click", async () => {
+    state.view = "campaigns";
+    state.campaigns = await listMyCampaigns();
+    render();
+  });
+
   root.querySelector("#btnDashSync")?.addEventListener("click", async () => {
     const count = await syncLocalToSupabase();
-    await refreshConnectionAndData();
-    alert(`${count} ficha(s) sincronizada(s) com o Supabase!`);
+    state.investigators = await listInvestigators();
+    render();
+    alert(`${count} ficha(s) sincronizada(s)!`);
   });
 
   root.querySelectorAll("[data-open-id]").forEach((btn) => {
@@ -489,6 +576,7 @@ function renderDashboard(root) {
       const sheet = await getInvestigatorById(id);
       if (sheet) {
         state.activeSheet = sheet;
+        state.returnToCampaignId = null;
         state.sheetTab = "front";
         state.view = "sheet";
         render();
@@ -519,7 +607,7 @@ function renderDashboard(root) {
   root.querySelectorAll("[data-del-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-del-id");
-      if (confirm("Deseja realmente excluir esta ficha de investigador?")) {
+      if (confirm("Deseja realmente excluir este investigador?")) {
         await deleteInvestigator(id);
         state.investigators = await listInvestigators();
         render();
@@ -528,10 +616,757 @@ function renderDashboard(root) {
   });
 }
 
+// ============================================================================
+// 1.5. VISÃO: MESAS & CAMPANHAS (CRIAR MESA OU ENTRAR COM PERSONAGEM)
+// ============================================================================
+function renderCampaignsList(root) {
+  const myInvs = state.investigators || [];
+
+  root.innerHTML = `
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:1.25rem; margin-bottom:1.25rem;">
+      <!-- CARD 1: CRIAR NOVA MESA (GUARDIÃO) -->
+      <section class="ornate-panel" style="margin-bottom:0;">
+        <div class="section-banner">Criar Nova Mesa (Como Guardião)</div>
+        <p style="font-size:0.83rem; color:var(--text-secondary); margin-bottom:0.85rem;">
+          Ao criar uma mesa, você será o <strong>Guardião dos Mistérios</strong> (suas rolagens ocultas ficam invisíveis para os jogadores) e receberá um código de convite.
+        </p>
+        <form id="formCreateCampaign" style="display:flex; flex-direction:column; gap:0.75rem;">
+          <div>
+            <label>Nome da Campanha / Mesa *</label>
+            <input type="text" id="campNameInput" required placeholder="Ex.: Máscaras de Nyarlathotep" />
+          </div>
+          <div>
+            <label>Ambientação / Época</label>
+            <select id="campEraInput">
+              <option value="1920">Década de 1920 (Clássico)</option>
+              <option value="modern">Era Moderna</option>
+            </select>
+          </div>
+          <div>
+            <label>Sinopse / Notas da Sessão</label>
+            <input type="text" id="campDescInput" placeholder="Ex.: Capítulo 1 — Arkham, Outubro de 1925" />
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-crown"></i> Criar Mesa como Guardião
+          </button>
+        </form>
+      </section>
+
+      <!-- CARD 2: ENTRAR EM UMA MESA (JOGADOR) -->
+      <section class="ornate-panel" style="margin-bottom:0;">
+        <div class="section-banner">Entrar em uma Mesa com Personagem</div>
+        <p style="font-size:0.83rem; color:var(--text-secondary); margin-bottom:0.85rem;">
+          Insira o código de 6 letras fornecido pelo Guardião e escolha qual dos seus investigadores participará da sessão.
+        </p>
+        <form id="formJoinCampaign" style="display:flex; flex-direction:column; gap:0.75rem;">
+          <div>
+            <label>Código de Convite da Mesa *</label>
+            <input
+              type="text"
+              id="joinCodeInput"
+              required
+              maxlength="8"
+              placeholder="Ex.: ARK72X"
+              style="font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.12em;"
+            />
+          </div>
+          <div>
+            <label>Selecionar Meu Investigador *</label>
+            ${
+              myInvs.length === 0
+                ? `<p style="font-size:0.8rem; color:var(--status-luck);">Você precisa criar um investigador antes de entrar como jogador.</p>`
+                : `
+              <select id="joinInvestigatorSelect" required>
+                ${myInvs
+                  .map(
+                    (inv) =>
+                      `<option value="${inv.id}">${escapeHtml(inv.name)} (PV ${inv.derived?.hp}/${inv.derived?.max_hp} | SAN ${inv.derived?.sanity})</option>`
+                  )
+                  .join("")}
+              </select>
+            `
+            }
+          </div>
+          <button type="submit" class="btn btn-outline-crimson" ${myInvs.length === 0 ? "disabled" : ""}>
+            <i class="fa-solid fa-door-open"></i> Entrar na Mesa com Investigador
+          </button>
+        </form>
+      </section>
+    </div>
+
+    <!-- LISTA DE MESAS DO USUÁRIO -->
+    <section class="ornate-panel">
+      <div class="section-banner">Minhas Mesas Ativas (${state.campaigns.length})</div>
+
+      ${
+        state.campaigns.length === 0
+          ? `
+        <div style="text-align:center; padding:2rem 1rem; color:var(--text-secondary);">
+          Nenhuma mesa vinculada ainda. Crie uma mesa acima ou entre usando um código de convite!
+        </div>
+      `
+          : `
+        <div class="investigators-grid">
+          ${state.campaigns
+            .map((c) => {
+              const isKeeper = c.keeper_id === state.currentUser.id;
+              const memberCount = (c.campaign_members || []).length;
+              return `
+              <article class="inv-card">
+                <div>
+                  <div class="inv-card-header">
+                    <div>
+                      <h3 class="inv-card-name">${escapeHtml(c.name)}</h3>
+                      <div class="inv-card-occ">
+                        ${
+                          isKeeper
+                            ? `<i class="fa-solid fa-crown"></i> Você é o Guardião`
+                            : `<i class="fa-solid fa-user-secret"></i> Jogador Investigador`
+                        } • ${c.era === "modern" ? "Era Moderna" : "Década de 1920"}
+                      </div>
+                    </div>
+                    <span class="invite-code-pill" title="Código de Convite">${escapeHtml(c.invite_code)}</span>
+                  </div>
+                  ${
+                    c.description
+                      ? `<p style="font-size:0.82rem; color:var(--text-secondary); margin-top:0.5rem;">${escapeHtml(
+                          c.description
+                        )}</p>`
+                      : ""
+                  }
+                  <div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.65rem;">
+                    <i class="fa-solid fa-users"></i> ${memberCount} investigador(es) na mesa
+                  </div>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; gap:0.5rem; padding-top:0.75rem; border-top:1px solid var(--border-subtle);">
+                  <button type="button" class="btn btn-primary btn-sm" data-enter-camp="${c.id}" style="flex:1;">
+                    <i class="fa-solid fa-tower-broadcast"></i> Entrar na Sala Ao Vivo
+                  </button>
+                  ${
+                    isKeeper
+                      ? `<button type="button" class="btn btn-sm" data-del-camp="${c.id}" title="Encerrar/Excluir Mesa"><i class="fa-solid fa-trash-can"></i></button>`
+                      : `<button type="button" class="btn btn-sm" data-leave-camp="${c.id}" title="Sair da Mesa"><i class="fa-solid fa-person-walking-arrow-right"></i></button>`
+                  }
+                </div>
+              </article>
+            `;
+            })
+            .join("")}
+        </div>
+      `
+      }
+    </section>
+  `;
+
+  root.querySelector("#formCreateCampaign")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = root.querySelector("#campNameInput").value;
+    const era = root.querySelector("#campEraInput").value;
+    const description = root.querySelector("#campDescInput").value;
+    try {
+      const created = await createCampaign({ name, era, description });
+      await openCampaignRoom(created.id);
+    } catch (err) {
+      alert(err.message || "Erro ao criar mesa. Certifique-se de ter executado o bloco SQL de Mesas no Supabase.");
+    }
+  });
+
+  root.querySelector("#formJoinCampaign")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const code = root.querySelector("#joinCodeInput").value;
+    const invId = root.querySelector("#joinInvestigatorSelect")?.value;
+    try {
+      const camp = await joinCampaignByCode(code, invId);
+      await openCampaignRoom(camp.id);
+    } catch (err) {
+      alert(err.message || "Erro ao entrar na mesa.");
+    }
+  });
+
+  root.querySelectorAll("[data-enter-camp]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-enter-camp");
+      await openCampaignRoom(id);
+    });
+  });
+
+  root.querySelectorAll("[data-del-camp]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-del-camp");
+      if (confirm("Deseja realmente excluir esta mesa e seu histórico?")) {
+        await deleteCampaign(id);
+        state.campaigns = await listMyCampaigns();
+        render();
+      }
+    });
+  });
+
+  root.querySelectorAll("[data-leave-camp]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-leave-camp");
+      if (confirm("Deseja retirar seu investigador desta mesa?")) {
+        await leaveCampaign(id);
+        state.campaigns = await listMyCampaigns();
+        render();
+      }
+    });
+  });
+}
+
+async function openCampaignRoom(campaignId) {
+  try {
+    state.activeCampaignRoom = await getCampaignRoomData(campaignId);
+    state.view = "campaign_room";
+    render();
+
+    await subscribeToCampaignRoom(campaignId, async () => {
+      if (state.view === "campaign_room" && state.activeCampaignRoom?.campaign?.id === campaignId) {
+        state.activeCampaignRoom = await getCampaignRoomData(campaignId);
+        renderCampaignRoom(document.getElementById("appRoot"));
+      }
+    });
+  } catch (err) {
+    alert(err.message || "Não foi possível abrir a sala da mesa.");
+  }
+}
+
+// ============================================================================
+// 1.6. VISÃO: SALA AO VIVO DA MESA (STATUS EM TEMPO REAL + CHAT & DADOS OCULTOS)
+// ============================================================================
+function renderCampaignRoom(root) {
+  const { campaign, members, messages } = state.activeCampaignRoom;
+  const isKeeper = campaign.keeper_id === state.currentUser.id;
+  const myMember = members.find((m) => m.user_id === state.currentUser.id);
+  const myInv = myMember?.investigator || null;
+
+  root.innerHTML = `
+    <!-- CABEÇALHO DA SALA AO VIVO -->
+    <div class="ornate-panel" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.85rem; padding:0.95rem 1.25rem;">
+      <div style="display:flex; align-items:center; gap:0.85rem; flex-wrap:wrap;">
+        <button type="button" class="btn btn-sm" id="btnBackToCampaigns">
+          <i class="fa-solid fa-arrow-left"></i> Mesas
+        </button>
+        <div>
+          <h2 style="font-family:var(--font-display); font-size:1.25rem; display:flex; align-items:center; gap:0.5rem;">
+            <i class="fa-solid fa-tower-broadcast" style="color:var(--status-success);"></i>
+            ${escapeHtml(campaign.name)}
+          </h2>
+          <div style="font-size:0.78rem; color:var(--text-secondary);">
+            ${
+              isKeeper
+                ? `<span style="color:var(--status-luck); font-weight:700;"><i class="fa-solid fa-crown"></i> Modo Guardião dos Mistérios</span>`
+                : `<span><i class="fa-solid fa-user-secret"></i> Jogador: ${escapeHtml(
+                    myInv?.name || state.currentUser.email
+                  )}</span>`
+            }
+            ${campaign.description ? ` • ${escapeHtml(campaign.description)}` : ""}
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+        <div>
+          <span style="font-size:0.72rem; color:var(--text-secondary); text-transform:uppercase; margin-right:0.35rem;">Código de Convite:</span>
+          <span class="invite-code-pill">${escapeHtml(campaign.invite_code)}</span>
+        </div>
+        ${
+          state.investigators.length > 0
+            ? `
+          <div style="display:flex; align-items:center; gap:0.4rem;">
+            <select id="roomSwitchInvestigator" style="width:auto; padding:0.3rem 0.55rem; font-size:0.78rem;">
+              <option value="">-- Vincular/Trocar Meu Personagem --</option>
+              ${state.investigators
+                .map(
+                  (inv) =>
+                    `<option value="${inv.id}" ${myInv?.id === inv.id ? "selected" : ""}>${escapeHtml(
+                      inv.name
+                    )}</option>`
+                )
+                .join("")}
+            </select>
+          </div>
+        `
+            : ""
+        }
+      </div>
+    </div>
+
+    <!-- GRADE PRINCIPAL DA SALA: ESQUERDA (STATUS AO VIVO + DADOS) | DIREITA (CHAT & ROLAGENS) -->
+    <div class="campaign-room-grid">
+      <!-- COLUNA ESQUERDA: INVESTIGADORES NA MESA & PAINEL DE ROLAGEM -->
+      <div>
+        <!-- PAINEL EXCLUSIVO DO GUARDIÃO (SE FOR O CRIADOR DA MESA) -->
+        ${
+          isKeeper
+            ? `
+          <section class="ornate-panel" style="border-color:var(--status-san);">
+            <div class="section-banner" style="margin-bottom:0.85rem;">
+              <i class="fa-solid fa-crown"></i> Escudo de Rolagens do Guardião
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:0.85rem;">
+              <label class="flag-check" style="font-size:0.85rem; color:var(--text-primary); font-weight:600; background:rgba(139,92,246,0.14); padding:0.45rem 0.8rem; border:1px solid var(--status-san); border-radius:4px;">
+                <input type="checkbox" id="chkKeeperSecret" ${state.keeperSecretMode ? "checked" : ""} />
+                <i class="fa-solid fa-eye-slash" style="color:var(--status-san);"></i>
+                Rolagem Oculta do Guardião (Invisível para os Jogadores)
+              </label>
+
+              <div style="display:flex; align-items:center; gap:0.4rem;">
+                <input type="number" id="keeperTargetPct" min="1" max="99" value="50" style="width:72px; padding:0.3rem 0.45rem; font-family:var(--font-mono);" title="Alvo % para teste 1D100 do Guardião" />
+                <button type="button" class="btn btn-primary btn-sm" id="btnKeeperRollD100">
+                  <i class="fa-solid fa-dice-d20"></i> Rolar 1D100 (Alvo %)
+                </button>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:0.45rem; flex-wrap:wrap;">
+              ${[3, 4, 6, 8, 10, 20, 100]
+                .map(
+                  (sides) => `
+                <button type="button" class="btn btn-sm" data-keeper-die="${sides}">
+                  <i class="fa-solid fa-dice"></i> 1D${sides}
+                </button>
+              `
+                )
+                .join("")}
+            </div>
+          </section>
+        `
+            : ""
+        }
+
+        <!-- MONITORAMENTO AO VIVO DOS INVESTIGADORES DA MESA -->
+        <section class="ornate-panel">
+          <div class="section-banner">Status Ao Vivo dos Investigadores na Mesa (${members.filter((m) => m.investigator).length})</div>
+
+          ${
+            members.filter((m) => m.investigator).length === 0
+              ? `
+            <div style="text-align:center; padding:1.75rem 1rem; color:var(--text-secondary); font-size:0.88rem;">
+              Nenhum investigador vinculado à mesa ainda. Compartilhe o código <strong>${escapeHtml(
+                campaign.invite_code
+              )}</strong> com os jogadores ou selecione um personagem no topo!
+            </div>
+          `
+              : `
+            <div class="investigators-grid" style="grid-template-columns:repeat(auto-fill, minmax(290px, 1fr));">
+              ${members
+                .filter((m) => m.investigator)
+                .map((m) => {
+                  const inv = m.investigator;
+                  const d = inv.derived || {};
+                  const c = inv.characteristics || {};
+                  const occ = OCCUPATIONS_CATALOG.find((o) => o.id === inv.occupation_id);
+                  const occName = inv.custom_occupation_name || occ?.name || "Investigador";
+                  const canControl = m.user_id === state.currentUser.id || isKeeper;
+
+                  const activeConditions = [];
+                  if (d.major_wound) activeConditions.push("Lesão Grave");
+                  if (d.unconscious) activeConditions.push("Inconsciente");
+                  if (d.dying) activeConditions.push("Morrendo");
+                  if (d.temp_insanity) activeConditions.push("Insan. Temporária");
+                  if (d.indef_insanity) activeConditions.push("Insan. Indefinida");
+                  if (d.out_of_luck) activeConditions.push("Sem Sorte");
+
+                  return `
+                  <article class="inv-card" style="border-color:${
+                    m.user_id === state.currentUser.id ? "var(--crimson-primary)" : "var(--border-ornate)"
+                  };">
+                    <div>
+                      <div class="inv-card-header">
+                        <div>
+                          <h3 class="inv-card-name">${escapeHtml(inv.name)}</h3>
+                          <div class="inv-card-occ">${escapeHtml(occName)} • Jogador: ${escapeHtml(
+                    inv.player_name || "Investigador"
+                  )}</div>
+                        </div>
+                        ${
+                          m.user_id === state.currentUser.id || isKeeper
+                            ? `<button type="button" class="btn btn-sm" data-room-open-sheet="${inv.id}" title="Abrir Ficha Completa"><i class="fa-solid fa-scroll"></i> Ficha</button>`
+                            : ""
+                        }
+                      </div>
+
+                      <div class="inv-stat-pills" style="margin-top:0.75rem;">
+                        <div class="stat-pill">
+                          <div class="lbl">PV</div>
+                          <div class="val" style="color:var(--status-hp);">${d.hp}/${d.max_hp}</div>
+                          ${
+                            canControl
+                              ? `<div style="display:flex; justify-content:center; gap:0.25rem; margin-top:0.25rem;">
+                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:hp:-1">−</button>
+                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:hp:1">+</button>
+                                </div>`
+                              : ""
+                          }
+                        </div>
+                        <div class="stat-pill">
+                          <div class="lbl">SAN</div>
+                          <div class="val" style="color:var(--status-san);">${d.sanity}/${d.max_sanity}</div>
+                          ${
+                            canControl
+                              ? `<div style="display:flex; justify-content:center; gap:0.25rem; margin-top:0.25rem;">
+                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:sanity:-1">−</button>
+                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:sanity:1">+</button>
+                                </div>`
+                              : ""
+                          }
+                        </div>
+                        <div class="stat-pill">
+                          <div class="lbl">Sorte</div>
+                          <div class="val" style="color:var(--status-luck);">${c.luck}%</div>
+                          ${
+                            canControl
+                              ? `<div style="display:flex; justify-content:center; gap:0.25rem; margin-top:0.25rem;">
+                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:luck:-1">−</button>
+                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:luck:1">+</button>
+                                </div>`
+                              : ""
+                          }
+                        </div>
+                        <div class="stat-pill">
+                          <div class="lbl">PM</div>
+                          <div class="val" style="color:var(--status-mp);">${d.mp}/${d.max_mp}</div>
+                          ${
+                            canControl
+                              ? `<div style="display:flex; justify-content:center; gap:0.25rem; margin-top:0.25rem;">
+                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:mp:-1">−</button>
+                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:mp:1">+</button>
+                                </div>`
+                              : ""
+                          }
+                        </div>
+                      </div>
+
+                      <div style="margin-top:0.65rem; display:flex; gap:0.35rem; flex-wrap:wrap;">
+                        ${
+                          activeConditions.length === 0
+                            ? `<span style="font-size:0.74rem; color:var(--status-success);"><i class="fa-solid fa-heart-pulse"></i> Estável</span>`
+                            : activeConditions
+                                .map(
+                                  (cond) =>
+                                    `<span class="char-formula-badge" style="color:#fca5a5; border:1px solid var(--crimson-primary);">${cond}</span>`
+                                )
+                                .join("")
+                        }
+                      </div>
+                    </div>
+                  </article>
+                `;
+                })
+                .join("")}
+            </div>
+          `
+          }
+        </section>
+
+        <!-- ATALHO DE ROLAGENS DO MEU INVESTIGADOR NA SALA -->
+        ${
+          myInv
+            ? `
+          <section class="ornate-panel">
+            <div class="section-banner">Rolagem Rápida na Mesa: ${escapeHtml(myInv.name)}</div>
+            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.8rem;">
+              ${PRIMARY_CHARACTERISTICS.map((attr) => {
+                const val = myInv.characteristics?.[attr.key] || 50;
+                return `
+                  <button type="button" class="btn btn-sm" data-player-roll-label="${attr.sigla} (${attr.name})" data-player-roll-val="${val}">
+                    <i class="fa-solid fa-dice-d20"></i> ${attr.sigla} (${val}%)
+                  </button>
+                `;
+              }).join("")}
+              <button type="button" class="btn btn-sm" style="border-color:var(--status-san);" data-player-roll-label="Sanidade" data-player-roll-val="${
+                myInv.derived?.sanity || 50
+              }">
+                <i class="fa-solid fa-dice-d20"></i> SAN (${myInv.derived?.sanity || 50}%)
+              </button>
+              <button type="button" class="btn btn-sm" style="border-color:var(--status-luck);" data-player-roll-label="Sorte" data-player-roll-val="${
+                myInv.characteristics?.luck || 50
+              }">
+                <i class="fa-solid fa-dice-d20"></i> Sorte (${myInv.characteristics?.luck || 50}%)
+              </button>
+            </div>
+
+            <div class="skills-sheet-grid" style="max-height:260px; overflow-y:auto; padding-right:0.25rem;">
+              ${SKILLS_CATALOG.map((sk) => {
+                const entry = myInv.skills?.[sk.id] || {
+                  base_value: getSkillBaseValue(sk, myInv.characteristics || {}),
+                  occupation_points: 0,
+                  personal_points: 0,
+                  experience_points: 0
+                };
+                const total = Math.min(
+                  99,
+                  (entry.base_value || 0) +
+                    (entry.occupation_points || 0) +
+                    (entry.personal_points || 0) +
+                    (entry.experience_points || 0)
+                );
+                return `
+                  <button
+                    type="button"
+                    class="btn btn-sm"
+                    style="justify-content:space-between; text-align:left;"
+                    data-player-roll-label="${sk.name}"
+                    data-player-roll-val="${total}"
+                  >
+                    <span><i class="fa-solid fa-dice-d20" style="color:var(--crimson-bright); margin-right:0.3rem;"></i>${sk.name}</span>
+                    <span style="font-family:var(--font-mono);">${total}%</span>
+                  </button>
+                `;
+              }).join("")}
+            </div>
+          </section>
+        `
+            : ""
+        }
+      </div>
+
+      <!-- COLUNA DIREITA: CHAT & REGISTRO DE ROLAGENS AO VIVO -->
+      <aside class="chat-panel">
+        <div class="section-banner" style="margin-bottom:0;">
+          <i class="fa-solid fa-comments"></i> Chat & Rolagens Ao Vivo
+        </div>
+
+        <div class="chat-messages-list" id="roomChatList">
+          ${
+            messages.length === 0
+              ? `<div style="text-align:center; color:var(--text-muted); font-size:0.82rem; margin-top:2rem;">Nenhuma rolagem ou mensagem registrada ainda nesta sessão.</div>`
+              : messages
+                  .map((m) => {
+                    const timeStr = new Date(m.created_at).toLocaleTimeString("pt-BR", {
+                      hour: "2-digit",
+                      minute: "2-digit"
+                    });
+                    if (m.message_type === "roll") {
+                      return `
+                        <div class="chat-msg roll-msg ${m.is_keeper_secret ? "secret-msg" : ""}">
+                          <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.74rem; color:var(--text-secondary); margin-bottom:0.25rem;">
+                            <strong>
+                              ${
+                                m.sender_role === "keeper"
+                                  ? `<i class="fa-solid fa-crown" style="color:var(--status-luck);"></i> `
+                                  : `<i class="fa-solid fa-user-secret"></i> `
+                              }${escapeHtml(m.sender_name)}
+                            </strong>
+                            <span>
+                              ${
+                                m.is_keeper_secret
+                                  ? `<span style="color:var(--status-san); font-weight:700; margin-right:0.4rem;"><i class="fa-solid fa-eye-slash"></i> Oculto do Guardião</span>`
+                                  : ""
+                              }
+                              ${timeStr}
+                            </span>
+                          </div>
+                          <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+                            <div>
+                              <div style="font-weight:600; color:var(--text-primary);">${escapeHtml(m.content)}</div>
+                              ${
+                                m.roll_target
+                                  ? `<div style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-muted);">Alvo: ${m.roll_target}% (½: ${Math.floor(
+                                      m.roll_target / 2
+                                    )}% | ⅕: ${Math.floor(m.roll_target / 5)}%)</div>`
+                                  : ""
+                              }
+                            </div>
+                            <div style="display:flex; align-items:center; gap:0.5rem;">
+                              <span style="font-family:var(--font-mono); font-size:1.25rem; font-weight:800;">
+                                ${m.roll_result}
+                              </span>
+                              ${
+                                m.roll_level
+                                  ? `<span class="roll-badge ${m.roll_code || "regular"}" style="font-size:0.68rem;">${escapeHtml(
+                                      m.roll_level
+                                    )}</span>`
+                                  : ""
+                              }
+                            </div>
+                          </div>
+                        </div>
+                      `;
+                    }
+                    return `
+                      <div class="chat-msg">
+                        <div style="display:flex; justify-content:space-between; font-size:0.73rem; color:var(--text-secondary); margin-bottom:0.2rem;">
+                          <strong>${escapeHtml(m.sender_name)}</strong>
+                          <span>${timeStr}</span>
+                        </div>
+                        <div>${escapeHtml(m.content)}</div>
+                      </div>
+                    `;
+                  })
+                  .join("")
+          }
+        </div>
+
+        <form id="formRoomChat" style="display:flex; gap:0.45rem; padding:0.75rem; border-top:1px solid var(--border-ornate); background:var(--bg-elevated);">
+          <input type="text" id="roomChatInput" placeholder="Enviar mensagem ou nota na mesa..." autocomplete="off" />
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="fa-solid fa-paper-plane"></i>
+          </button>
+        </form>
+      </aside>
+    </div>
+  `;
+
+  // Auto-scroll chat para o final
+  const chatList = root.querySelector("#roomChatList");
+  if (chatList) {
+    chatList.scrollTop = chatList.scrollHeight;
+  }
+
+  root.querySelector("#btnBackToCampaigns")?.addEventListener("click", async () => {
+    await unsubscribeFromCampaignRoom();
+    state.view = "campaigns";
+    state.campaigns = await listMyCampaigns();
+    render();
+  });
+
+  root.querySelector("#roomSwitchInvestigator")?.addEventListener("change", async (e) => {
+    const invId = e.target.value;
+    if (!invId) return;
+    await joinCampaignByCode(campaign.invite_code, invId);
+    state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
+    render();
+  });
+
+  root.querySelector("#chkKeeperSecret")?.addEventListener("change", (e) => {
+    state.keeperSecretMode = e.target.checked;
+  });
+
+  // Rolagem 1D100 do Guardião
+  root.querySelector("#btnKeeperRollD100")?.addEventListener("click", async () => {
+    const target = Number(root.querySelector("#keeperTargetPct")?.value) || 50;
+    const evalRes = evaluateD100Roll(target);
+    triggerD100Toast("Rolagem do Guardião (1D100)", target, evalRes);
+
+    await sendCampaignMessage({
+      campaign_id: campaign.id,
+      sender_name: "Guardião",
+      sender_role: "keeper",
+      message_type: "roll",
+      content: "Teste 1D100 do Guardião",
+      roll_result: evalRes.roll,
+      roll_target: evalRes.target,
+      roll_level: evalRes.level,
+      roll_code: evalRes.code,
+      is_keeper_secret: state.keeperSecretMode
+    });
+    state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
+    render();
+  });
+
+  // Dados poliedrais do Guardião (1D3 a 1D100)
+  root.querySelectorAll("[data-keeper-die]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const sides = Number(btn.getAttribute("data-keeper-die"));
+      const val = rollDie(sides);
+      await sendCampaignMessage({
+        campaign_id: campaign.id,
+        sender_name: "Guardião",
+        sender_role: "keeper",
+        message_type: "roll",
+        content: `Rolou 1D${sides}`,
+        roll_result: val,
+        roll_target: null,
+        roll_level: `1D${sides}`,
+        roll_code: "regular",
+        is_keeper_secret: state.keeperSecretMode
+      });
+      state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
+      render();
+    });
+  });
+
+  // Rolagem de Atributo/Perícia do Jogador na Mesa
+  root.querySelectorAll("[data-player-roll-label]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const label = btn.getAttribute("data-player-roll-label");
+      const target = Number(btn.getAttribute("data-player-roll-val")) || 0;
+      const evalRes = evaluateD100Roll(target);
+      triggerD100Toast(`${myInv?.name || "Investigador"}: ${label}`, target, evalRes);
+
+      await sendCampaignMessage({
+        campaign_id: campaign.id,
+        sender_name: myInv?.name || state.currentUser.email,
+        sender_role: "player",
+        message_type: "roll",
+        content: `Teste de ${label}`,
+        roll_result: evalRes.roll,
+        roll_target: evalRes.target,
+        roll_level: evalRes.level,
+        roll_code: evalRes.code,
+        is_keeper_secret: false
+      });
+      state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
+      render();
+    });
+  });
+
+  // Ajuste de PV / SAN / Sorte / PM ao vivo direto na mesa
+  root.querySelectorAll("[data-room-stat]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const [invId, stat, deltaStr] = btn.getAttribute("data-room-stat").split(":");
+      const delta = Number(deltaStr);
+      const mem = members.find((m) => m.investigator?.id === invId);
+      if (!mem || !mem.investigator) return;
+      const sheet = mem.investigator;
+
+      if (stat === "hp") {
+        sheet.derived.hp = Math.max(0, Math.min(sheet.derived.max_hp, (sheet.derived.hp || 0) + delta));
+      } else if (stat === "sanity") {
+        sheet.derived.sanity = Math.max(0, Math.min(sheet.derived.max_sanity, (sheet.derived.sanity || 0) + delta));
+      } else if (stat === "mp") {
+        sheet.derived.mp = Math.max(0, Math.min(sheet.derived.max_mp, (sheet.derived.mp || 0) + delta));
+      } else if (stat === "luck") {
+        sheet.characteristics.luck = Math.max(0, Math.min(99, (sheet.characteristics.luck || 0) + delta));
+      }
+      await updateLiveInvestigatorStatus(sheet);
+      state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
+      render();
+    });
+  });
+
+  // Abrir ficha completa a partir da sala da mesa
+  root.querySelectorAll("[data-room-open-sheet]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const invId = btn.getAttribute("data-room-open-sheet");
+      const sheet = await getInvestigatorById(invId);
+      if (sheet) {
+        state.activeSheet = sheet;
+        state.returnToCampaignId = campaign.id;
+        state.sheetTab = "front";
+        state.view = "sheet";
+        render();
+      }
+    });
+  });
+
+  // Enviar mensagem de texto no chat da mesa
+  root.querySelector("#formRoomChat")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const inp = root.querySelector("#roomChatInput");
+    const txt = inp.value.trim();
+    if (!txt) return;
+    inp.value = "";
+
+    await sendCampaignMessage({
+      campaign_id: campaign.id,
+      sender_name: isKeeper ? "Guardião" : myInv?.name || state.currentUser.email,
+      sender_role: isKeeper ? "keeper" : "player",
+      message_type: "chat",
+      content: txt,
+      is_keeper_secret: false
+    });
+    state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
+    render();
+  });
+}
+
 async function createSampleInvestigator() {
   const sample = createBlankDraft();
   sample.name = "Arthur Blackwood";
-  sample.player_name = "Investigador Miskatonic";
+  sample.player_name = state.currentUser?.email?.split("@")[0] || "Investigador";
   sample.age = 34;
   sample.gender = "Masculino";
   sample.era = "1920";
@@ -554,7 +1389,6 @@ async function createSampleInvestigator() {
   sample.selected_free_skills = ["firearms_handgun"];
   recalculateDraft(sample);
 
-  // Aloca Pontos Ocupacionais (EDU*2 + DES*2 = 140 + 140 = 280)
   sample.skills.credit_rating.occupation_points = 20;
   sample.skills.spot_hidden.occupation_points = 45;
   sample.skills.library_use.occupation_points = 40;
@@ -564,7 +1398,6 @@ async function createSampleInvestigator() {
   sample.skills.firearms_handgun.occupation_points = 40;
   sample.skills.disguise.occupation_points = 20;
 
-  // Aloca Interesses Pessoais (INT*2 = 150)
   sample.skills.listen.personal_points = 35;
   sample.skills.dodge.personal_points = 30;
   sample.skills.occult.personal_points = 45;
@@ -1026,11 +1859,10 @@ function renderWizardStep1(container, d) {
     </section>
   `;
 
-  // Eventos Etapa 1
   container.querySelector("#wizName").addEventListener("input", (e) => {
     d.name = e.target.value;
-    render();
   });
+  container.querySelector("#wizName").addEventListener("change", () => render());
   container.querySelector("#wizPlayer").addEventListener("input", (e) => {
     d.player_name = e.target.value;
   });
@@ -1330,7 +2162,7 @@ function renderWizardStep3(container, d) {
           <div class="val" style="color:${remOcc === 0 ? "var(--status-success)" : "var(--crimson-bright)"}; font-size:1.3rem;">
             ${remOcc} / ${maxOcc}
           </div>
-          <div style="font-size:0.7rem; color:var(--text-muted);">Apenas nas 8 perícias marcadas em vermelho + Nível de Crédito</div>
+          <div style="font-size:0.7rem; color:var(--text-muted);">Apenas nas 8 perícias marcadas com estrela + Nível de Crédito</div>
         </div>
 
         <div class="stat-pill" style="border-color:var(--status-mp);">
@@ -1390,7 +2222,11 @@ function renderWizardStep3(container, d) {
                   isOcc ? "rgba(220,20,30,0.07)" : "transparent"
                 };">
                   <td style="padding:0.4rem 0.5rem; font-weight:${isOcc ? "700" : "400"};">
-                    ${isOcc ? `<i class="fa-solid fa-star" style="color:var(--crimson-bright); font-size:0.72rem; margin-right:0.25rem;"></i>` : ""}
+                    ${
+                      isOcc
+                        ? `<i class="fa-solid fa-star" style="color:var(--crimson-bright); font-size:0.72rem; margin-right:0.25rem;"></i>`
+                        : ""
+                    }
                     ${sk.name}
                     ${
                       sk.id === "credit_rating"
@@ -1477,13 +2313,11 @@ function renderWizardStep3(container, d) {
       sk.personal_points = 0;
     }
 
-    // 1. Garante Nível de Crédito mínimo da ocupação
     let poolOcc = maxOcc;
     const minCr = occ.credit_min;
     d.skills.credit_rating.occupation_points = minCr;
     poolOcc -= minCr;
 
-    // 2. Distribui o restante entre as 8 perícias ocupacionais
     const occSkillIds = Object.values(d.skills)
       .filter((s) => s.is_occupation_skill && s.skill_id !== "credit_rating")
       .map((s) => s.skill_id);
@@ -1504,7 +2338,6 @@ function renderWizardStep3(container, d) {
       d.skills[occSkillIds[0]].occupation_points += poolOcc;
     }
 
-    // 3. Distribui Interesses Pessoais (INT * 2) em Encontrar, Escutar, Esquivar, Psicologia e Ocultismo
     let poolPers = maxPers;
     const favPersonal = ["spot_hidden", "listen", "dodge", "first_aid", "occult", "stealth"];
     let pIdx = 0;
@@ -1718,15 +2551,28 @@ function renderEditableSheet(root, sheet) {
   const f = sheet.finances || {};
   const occ = OCCUPATIONS_CATALOG.find((o) => o.id === sheet.occupation_id);
   const occName = sheet.custom_occupation_name || occ?.name || "Investigador";
-  const dodgeSkill = sheet.skills?.dodge || { base_value: Math.floor((c.dex || 50) / 2), occupation_points: 0, personal_points: 0, experience_points: 0 };
-  const dodgeTotal = Math.min(99, (dodgeSkill.base_value || 0) + (dodgeSkill.occupation_points || 0) + (dodgeSkill.personal_points || 0) + (dodgeSkill.experience_points || 0));
+  const dodgeSkill = sheet.skills?.dodge || {
+    base_value: Math.floor((c.dex || 50) / 2),
+    occupation_points: 0,
+    personal_points: 0,
+    experience_points: 0
+  };
+  const dodgeTotal = Math.min(
+    99,
+    (dodgeSkill.base_value || 0) +
+      (dodgeSkill.occupation_points || 0) +
+      (dodgeSkill.personal_points || 0) +
+      (dodgeSkill.experience_points || 0)
+  );
   const dodgeFrac = calcFractions(dodgeTotal);
 
   root.innerHTML = `
     <!-- BARRA DE CONTROLE DA FICHA -->
     <div class="ornate-panel no-print" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; padding:0.85rem 1.2rem;">
       <div style="display:flex; gap:0.5rem;">
-        <button type="button" class="btn btn-sm" id="btnBackToDash"><i class="fa-solid fa-arrow-left"></i> Meus Investigadores</button>
+        <button type="button" class="btn btn-sm" id="btnBackToDash">
+          <i class="fa-solid fa-arrow-left"></i> ${state.returnToCampaignId ? "Voltar para a Mesa Ao Vivo" : "Meus Investigadores"}
+        </button>
         <button type="button" class="btn btn-sm ${state.sheetTab === "front" ? "btn-primary" : ""}" id="btnTabFront">
           <i class="fa-solid fa-id-card"></i> Frente da Ficha (Características, Perícias & Combate)
         </button>
@@ -1748,7 +2594,7 @@ function renderEditableSheet(root, sheet) {
       <!-- ================= FRENTE DA FICHA EDITÁVEL ================= -->
       <div class="ornate-panel">
         <div style="display:grid; grid-template-columns:1.1fr 1.6fr; gap:1.25rem; align-items:start;">
-          <!-- BLOCO ESQUERDO: DADOS PESSOAIS (DÉCADA DE 1920) -->
+          <!-- BLOCO ESQUERDO: DADOS PESSOAIS -->
           <div style="border:1px solid var(--border-ornate); padding:0.9rem; border-radius:4px; background:var(--bg-elevated);">
             <div class="section-banner" style="margin-bottom:0.75rem;">
               ${sheet.era === "modern" ? "ERA MODERNA" : "DÉCADA DE 1920"}
@@ -1802,7 +2648,7 @@ function renderEditableSheet(root, sheet) {
           </div>
         </div>
 
-        <!-- TRILHAS DE STATUS: PONTOS DE VIDA, SANIDADE, SORTE E PONTOS DE MAGIA -->
+        <!-- TRILHAS DE STATUS -->
         <div class="status-tracks-grid" style="margin-top:1rem;">
           <!-- PONTOS DE VIDA -->
           <div class="track-card">
@@ -1920,7 +2766,7 @@ function renderEditableSheet(root, sheet) {
           }).join("")}
         </div>
 
-        <!-- ARMAS & COMBATE + REFERÊNCIAS RÁPIDAS -->
+        <!-- ARMAS & COMBATE -->
         <div style="display:grid; grid-template-columns:2fr 1fr; gap:1rem; margin-top:1.25rem;">
           <div style="border:1px solid var(--border-ornate); padding:0.85rem; border-radius:4px; background:var(--bg-elevated);">
             <div class="section-banner" style="margin-bottom:0.65rem;">ARMAS</div>
@@ -2041,8 +2887,11 @@ function renderEditableSheet(root, sheet) {
     }
   `;
 
-  // Eventos da Ficha Editável
   root.querySelector("#btnBackToDash").addEventListener("click", async () => {
+    if (state.returnToCampaignId) {
+      await openCampaignRoom(state.returnToCampaignId);
+      return;
+    }
     state.view = "dashboard";
     state.investigators = await listInvestigators();
     render();
@@ -2062,12 +2911,31 @@ function renderEditableSheet(root, sheet) {
     window.print();
   });
 
-  // Roladores 1D100 na ficha
+  // Roladores 1D100 na ficha (se veio de uma mesa ativa, também envia para o chat da mesa!)
   root.querySelectorAll("[data-roll-d100-label]").forEach((el) => {
-    el.addEventListener("click", () => {
+    el.addEventListener("click", async () => {
       const label = el.getAttribute("data-roll-d100-label");
       const val = Number(el.getAttribute("data-roll-d100-val")) || 0;
-      triggerD100Toast(label, val);
+      const evalRes = triggerD100Toast(label, val);
+
+      if (state.returnToCampaignId) {
+        try {
+          await sendCampaignMessage({
+            campaign_id: state.returnToCampaignId,
+            sender_name: sheet.name || state.currentUser.email,
+            sender_role: "player",
+            message_type: "roll",
+            content: `Teste de ${label}`,
+            roll_result: evalRes.roll,
+            roll_target: evalRes.target,
+            roll_level: evalRes.level,
+            roll_code: evalRes.code,
+            is_keeper_secret: false
+          });
+        } catch (err) {
+          console.warn("Erro ao enviar rolagem para a mesa:", err);
+        }
+      }
     });
   });
 
@@ -2085,21 +2953,19 @@ function renderEditableSheet(root, sheet) {
       } else if (stat === "luck") {
         sheet.characteristics.luck = Math.max(0, Math.min(99, (sheet.characteristics.luck || 0) + delta));
       }
-      await saveInvestigator(sheet);
+      await updateLiveInvestigatorStatus(sheet);
       render();
     });
   });
 
-  // Flags de Lesão Grave, Insanidade, etc.
   root.querySelectorAll("[data-flag-toggle]").forEach((chk) => {
     chk.addEventListener("change", async () => {
       const flag = chk.getAttribute("data-flag-toggle");
       sheet.derived[flag] = chk.checked;
-      await saveInvestigator(sheet);
+      await updateLiveInvestigatorStatus(sheet);
     });
   });
 
-  // Checkboxes de evolução de perícia
   root.querySelectorAll("[data-skill-improve]").forEach((chk) => {
     chk.addEventListener("change", async () => {
       const skId = chk.getAttribute("data-skill-improve");
@@ -2120,7 +2986,6 @@ function renderEditableSheet(root, sheet) {
     });
   });
 
-  // Edição em tempo real do Verso da Ficha
   root.querySelectorAll("[data-sheet-backstory]").forEach((area) => {
     area.addEventListener("change", async () => {
       const catId = area.getAttribute("data-sheet-backstory");
@@ -2145,4 +3010,3 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
-
