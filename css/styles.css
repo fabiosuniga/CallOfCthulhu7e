@@ -1,0 +1,775 @@
+/* ============================================================================
+   CHAMADO DE CTHULHU 7ª EDIÇÃO — ESTILOS (css/styles.css)
+   Identidade Visual: Abismo Carmesim & Arquivos de 1920 (design.md)
+   ============================================================================ */
+
+:root {
+  --bg-abyss: #050507;
+  --bg-surface: #0e0e12;
+  --bg-elevated: #16161d;
+  --bg-input: #101016;
+  --bg-glass: rgba(18, 18, 24, 0.9);
+  --crimson-primary: #dc141e;
+  --crimson-bright: #f42530;
+  --crimson-dark: #7a0910;
+  --crimson-muted: #3b070b;
+  --border-subtle: #262024;
+  --border-ornate: #4d191f;
+  --text-primary: #f3ede2;
+  --text-secondary: #b0a79b;
+  --text-muted: #6e665e;
+  --status-hp: #e11d48;
+  --status-san: #8b5cf6;
+  --status-mp: #3b82f6;
+  --status-luck: #f59e0b;
+  --status-success: #10b981;
+  --font-display: "Cinzel", Georgia, serif;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --shadow-crimson: 0 8px 30px rgba(220, 20, 30, 0.16);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-abyss);
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(122, 9, 16, 0.22), transparent 55%),
+    radial-gradient(circle at 85% 90%, rgba(220, 20, 30, 0.08), transparent 45%);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============================================================================
+   CABEÇALHO SUPERIOR (TOPBAR)
+   ============================================================================ */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-ornate);
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  cursor: pointer;
+}
+
+.brand-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--crimson-primary);
+  box-shadow: 0 0 14px rgba(220, 20, 30, 0.45);
+  object-fit: cover;
+}
+
+.brand-title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+
+.brand-subtitle {
+  font-size: 0.75rem;
+  color: var(--crimson-bright);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.connection-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.connection-badge .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-luck);
+}
+
+.connection-badge.connected .dot {
+  background: var(--status-success);
+  box-shadow: 0 0 8px var(--status-success);
+}
+
+/* ============================================================================
+   BOTÕES & INPUTS
+   ============================================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-decoration: none;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--crimson-primary);
+  background: #1f171b;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--crimson-primary), var(--crimson-dark));
+  border-color: var(--crimson-bright);
+  color: #fff;
+  box-shadow: var(--shadow-crimson);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--crimson-bright), var(--crimson-primary));
+  transform: translateY(-1px);
+}
+
+.btn-outline-crimson {
+  border-color: var(--crimson-primary);
+  color: var(--crimson-bright);
+  background: rgba(220, 20, 30, 0.08);
+}
+
+.btn-sm {
+  font-size: 0.76rem;
+  padding: 0.35rem 0.65rem;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  transition: border-color 0.15s ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--crimson-primary);
+  box-shadow: 0 0 0 2px rgba(220, 20, 30, 0.2);
+}
+
+label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 0.3rem;
+}
+
+/* ============================================================================
+   LAYOUT PRINCIPAL E MOLDURAS ART DÉCO ANOS 1920
+   ============================================================================ */
+.main-container {
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  flex: 1;
+}
+
+.ornate-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-ornate);
+  border-radius: var(--radius-md);
+  padding: 1.35rem;
+  position: relative;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  margin-bottom: 1.25rem;
+}
+
+.ornate-panel::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 1px solid rgba(220, 20, 30, 0.14);
+  border-radius: 5px;
+  pointer-events: none;
+}
+
+.section-banner {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  text-align: center;
+  background: linear-gradient(90deg, transparent, var(--crimson-muted) 20%, var(--crimson-dark) 50%, var(--crimson-muted) 80%, transparent);
+  color: var(--text-primary);
+  padding: 0.45rem 1rem;
+  border-top: 1px solid var(--border-ornate);
+  border-bottom: 1px solid var(--border-ornate);
+  margin-bottom: 1.15rem;
+}
+
+/* ============================================================================
+   DASHBOARD DE INVESTIGADORES
+   ============================================================================ */
+.hero-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.investigators-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 1.15rem;
+}
+
+.inv-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-ornate);
+  border-radius: var(--radius-md);
+  padding: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.inv-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--crimson-primary);
+}
+
+.inv-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.inv-card-name {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  color: var(--text-primary);
+}
+
+.inv-card-occ {
+  font-size: 0.82rem;
+  color: var(--crimson-bright);
+  font-weight: 600;
+}
+
+.inv-stat-pills {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.45rem;
+  text-align: center;
+}
+
+.stat-pill {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem;
+}
+
+.stat-pill .lbl {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.stat-pill .val {
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+/* ============================================================================
+   WIZARD DE 5 ETAPAS OFICIAIS
+   ============================================================================ */
+.wizard-steps {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 1.35rem;
+}
+
+.wizard-step-tab {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.wizard-step-tab.active {
+  border-color: var(--crimson-primary);
+  background: var(--crimson-muted);
+}
+
+.wizard-step-tab.completed {
+  border-color: var(--status-success);
+}
+
+.step-num {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-ornate);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.wizard-step-tab.active .step-num {
+  background: var(--crimson-primary);
+  color: #fff;
+}
+
+.step-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+/* ============================================================================
+   CAIXA TRIPLA DE CARACTERÍSTICA (100% | 1/2 | 1/5) FIEL À FICHA EDITÁVEL
+   ============================================================================ */
+.chars-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.9rem;
+}
+
+.char-box-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-ornate);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+}
+
+.char-box-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.char-sigla {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.char-formula-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--crimson-bright);
+  background: rgba(220, 20, 30, 0.12);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+}
+
+.coc-triple-box {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  border: 1px solid var(--border-ornate);
+  background: var(--bg-input);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.coc-triple-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--border-ornate);
+  padding: 0.25rem;
+}
+
+.coc-triple-main input {
+  border: none;
+  background: transparent;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  padding: 0.2rem;
+}
+
+.coc-triple-fractions {
+  display: flex;
+  flex-direction: column;
+}
+
+.coc-fraction-cell {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.15rem 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.coc-fraction-cell:first-child {
+  border-bottom: 1px solid var(--border-ornate);
+}
+
+.coc-fraction-cell .frac-lbl {
+  font-size: 0.64rem;
+  color: var(--text-muted);
+}
+
+.coc-fraction-cell .frac-val {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+/* ============================================================================
+   TABELA DAS 46 PERÍCIAS DA FICHA EDITÁVEL (3 COLUNAS)
+   ============================================================================ */
+.skills-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.55rem 1.1rem;
+}
+
+.skill-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+}
+
+.skill-row.is-occ {
+  border-left: 3px solid var(--crimson-primary);
+  background: rgba(220, 20, 30, 0.07);
+}
+
+.skill-check {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--crimson-primary);
+  cursor: pointer;
+}
+
+.skill-title {
+  font-size: 0.81rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.skill-base-tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.skill-mini-triple {
+  display: inline-grid;
+  grid-template-columns: 38px 30px 30px;
+  border: 1px solid var(--border-ornate);
+  border-radius: 2px;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.skill-mini-triple span {
+  padding: 0.15rem 0.1rem;
+  background: var(--bg-input);
+}
+
+.skill-mini-triple span:first-child {
+  font-weight: 700;
+  color: var(--text-primary);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.skill-mini-triple span:nth-child(2) {
+  color: var(--text-secondary);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.skill-mini-triple span:nth-child(3) {
+  color: var(--text-muted);
+}
+
+/* ============================================================================
+   MEDIDORES DE STATUS (PV, SANIDADE, SORTE, MAGIA)
+   ============================================================================ */
+.status-tracks-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.9rem;
+  margin-bottom: 1.2rem;
+}
+
+.track-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-ornate);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem;
+}
+
+.track-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.track-title {
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.track-counter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.track-val-display {
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
+  font-weight: 700;
+  min-width: 65px;
+  text-align: center;
+}
+
+.track-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.flag-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.73rem;
+  color: var(--text-secondary);
+  text-transform: none;
+  margin: 0;
+  cursor: pointer;
+}
+
+.flag-check input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--crimson-primary);
+}
+
+/* ============================================================================
+   ROLADOR DE DADOS 1D100 FLUTUANTE (TOAST DE ROLAGEM)
+   ============================================================================ */
+.dice-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 100;
+  width: 340px;
+  background: var(--bg-surface);
+  border: 2px solid var(--crimson-primary);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.15rem;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85);
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+.dice-toast.hidden {
+  transform: translateY(20px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dice-roll-number {
+  font-family: var(--font-mono);
+  font-size: 2.1rem;
+  font-weight: 800;
+}
+
+.roll-badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.roll-badge.critical,
+.roll-badge.extreme {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid #10b981;
+}
+
+.roll-badge.hard,
+.roll-badge.regular {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+  border: 1px solid #3b82f6;
+}
+
+.roll-badge.fail {
+  background: rgba(110, 102, 94, 0.25);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.roll-badge.fumble {
+  background: rgba(220, 20, 30, 0.28);
+  color: #fca5a5;
+  border: 1px solid var(--crimson-bright);
+}
+
+/* ============================================================================
+   MODAL NATIVO (<dialog>)
+   ============================================================================ */
+dialog.coc-dialog {
+  margin: auto;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--crimson-primary);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  max-width: 520px;
+  width: 92%;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.9);
+}
+
+dialog.coc-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(4px);
+}
+
+/* ============================================================================
+   RESPONSIVIDADE E IMPRESSÃO (@media print)
+   ============================================================================ */
+@media (max-width: 1024px) {
+  .skills-sheet-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .status-tracks-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .wizard-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .skills-sheet-grid,
+  .status-tracks-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .topbar,
+  .no-print,
+  .dice-toast {
+    display: none !important;
+  }
+  .ornate-panel,
+  .char-box-card,
+  .track-card,
+  .skill-row {
+    background: #fff !important;
+    color: #000 !important;
+    border-color: #333 !important;
+    box-shadow: none !important;
+  }
+}
+
