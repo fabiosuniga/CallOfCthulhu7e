@@ -519,21 +519,34 @@ export async function getCampaignRoomData(campaignId) {
 
   const { data: members, error: memErr } = await supabaseInstance
     .from("campaign_members")
-    .select(`
-      id,
-      user_id,
-      role,
-      investigator_id,
-      investigators (
+    .select("id, user_id, role, investigator_id")
+    .eq("campaign_id", campaignId);
+  if (memErr) throw memErr;
+
+  const invIds = [
+    ...new Set((members || []).map((m) => m.investigator_id).filter(Boolean))
+  ];
+
+  let invMap = {};
+  if (invIds.length > 0) {
+    const { data: invRows, error: invErr } = await supabaseInstance
+      .from("investigators")
+      .select(`
         *,
         investigator_characteristics (*),
         investigator_derived (*),
         investigator_finances (*),
-        investigator_skills (*)
-      )
-    `)
-    .eq("campaign_id", campaignId);
-  if (memErr) throw memErr;
+        investigator_skills (*),
+        investigator_weapons (*)
+      `)
+      .in("id", invIds);
+
+    if (!invErr && invRows) {
+      for (const r of invRows) {
+        invMap[r.id] = normalizeFromSupabase(r);
+      }
+    }
+  }
 
   const { data: messages, error: msgErr } = await supabaseInstance
     .from("campaign_messages")
@@ -548,7 +561,7 @@ export async function getCampaignRoomData(campaignId) {
     user_id: m.user_id,
     role: m.role,
     investigator_id: m.investigator_id,
-    investigator: m.investigators ? normalizeFromSupabase(m.investigators) : null
+    investigator: m.investigator_id ? invMap[m.investigator_id] || null : null
   }));
 
   return {
@@ -556,6 +569,15 @@ export async function getCampaignRoomData(campaignId) {
     members: normalizedMembers,
     messages: messages || []
   };
+}
+
+export async function clearCampaignMessages(campaignId) {
+  if (!supabaseInstance) throw new Error("Serviço indisponível.");
+  const { error } = await supabaseInstance
+    .from("campaign_messages")
+    .delete()
+    .eq("campaign_id", campaignId);
+  if (error) throw error;
 }
 
 export async function sendCampaignMessage({
@@ -595,12 +617,33 @@ export async function sendCampaignMessage({
   return data;
 }
 
-export async function subscribeToCampaignRoom(campaignId, onRoomChange) {
+export async function subscribeToCampaignRoom(campaignId, onRoomChange, onPresenceChange = null) {
   if (!supabaseInstance) return;
   await unsubscribeFromCampaignRoom();
 
-  activeRealtimeChannel = supabaseInstance
-    .channel(`coc7e_room_${campaignId}`)
+  const user = await getCurrentUser();
+  const displayName = getUserDisplayName(user);
+
+  activeRealtimeChannel = supabaseInstance.channel(`coc7e_room_${campaignId}`, {
+    config: {
+      presence: {
+        key: user?.id || "anon"
+      }
+    }
+  });
+
+  activeRealtimeChannel
+    .on("presence", { event: "sync" }, () => {
+      if (!onPresenceChange || !activeRealtimeChannel) return;
+      const presenceState = activeRealtimeChannel.presenceState();
+      const onlineMap = {};
+      for (const [uid, presences] of Object.entries(presenceState)) {
+        if (presences && presences.length > 0) {
+          onlineMap[uid] = presences[0];
+        }
+      }
+      onPresenceChange(onlineMap);
+    })
     .on(
       "postgres_changes",
       {
@@ -639,7 +682,15 @@ export async function subscribeToCampaignRoom(campaignId, onRoomChange) {
       },
       () => onRoomChange("status")
     )
-    .subscribe();
+    .subscribe(async (status) => {
+      if (status === "SUBSCRIBED" && user && activeRealtimeChannel) {
+        await activeRealtimeChannel.track({
+          user_id: user.id,
+          name: displayName,
+          online_at: new Date().toISOString()
+        });
+      }
+    });
 }
 
 export async function unsubscribeFromCampaignRoom() {

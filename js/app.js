@@ -24,6 +24,7 @@ import {
   leaveCampaign,
   getCampaignRoomData,
   sendCampaignMessage,
+  clearCampaignMessages,
   subscribeToCampaignRoom,
   unsubscribeFromCampaignRoom
 } from "./supabaseClient.js";
@@ -56,6 +57,7 @@ const state = {
   investigators: [],
   campaigns: [],
   activeCampaignRoom: null, // { campaign, members, messages }
+  onlineUsers: {}, // { [user_id]: { user_id, name, online_at } }
   keeperSecretMode: true, // Guardião rola escondido por padrão
   currentUser: null,
   draft: null,
@@ -395,9 +397,8 @@ function renderAuthScreen(root) {
         </div>
 
         <form id="authMainForm" style="display:flex; flex-direction:column; gap:0.9rem;">
-          ${
-            !isLogin
-              ? `
+          ${!isLogin
+      ? `
             <div>
               <label for="authNameInput">Seu Nome (Jogador / Guardião) *</label>
               <input
@@ -410,8 +411,8 @@ function renderAuthScreen(root) {
               />
             </div>
           `
-              : ""
-          }
+      : ""
+    }
           <div>
             <label for="authEmailInput">E-mail</label>
             <input
@@ -537,9 +538,8 @@ function renderDashboard(root) {
 
       <div class="section-banner">Fichas da Sua Conta (${state.investigators.length})</div>
 
-      ${
-        state.investigators.length === 0
-          ? `
+      ${state.investigators.length === 0
+      ? `
         <div style="text-align:center; padding:2.5rem 1rem; color:var(--text-secondary);">
           <p style="font-size:1rem; margin-bottom:0.85rem;">Você ainda não possui nenhum investigador salvo nesta conta.</p>
           <p style="font-size:0.84rem; color:var(--text-muted); max-width:540px; margin:0 auto 1.25rem;">
@@ -550,23 +550,22 @@ function renderDashboard(root) {
           </button>
         </div>
       `
-          : `
+      : `
         <div class="investigators-grid">
           ${state.investigators
-            .map((inv) => {
-              const occ = OCCUPATIONS_CATALOG.find((o) => o.id === inv.occupation_id);
-              const occName = inv.custom_occupation_name || occ?.name || "Investigador";
-              const d = inv.derived || {};
-              const c = inv.characteristics || {};
-              return `
+        .map((inv) => {
+          const occ = OCCUPATIONS_CATALOG.find((o) => o.id === inv.occupation_id);
+          const occName = inv.custom_occupation_name || occ?.name || "Investigador";
+          const d = inv.derived || {};
+          const c = inv.characteristics || {};
+          return `
               <article class="inv-card">
                 <div>
                   <div class="inv-card-header">
                     <div>
                       <h3 class="inv-card-name">${escapeHtml(inv.name || "Sem Nome")}</h3>
-                      <div class="inv-card-occ">${escapeHtml(occName)} • ${inv.age || 25} anos (${
-                inv.era === "modern" ? "Era Moderna" : "Década de 1920"
-              })</div>
+                      <div class="inv-card-occ">${escapeHtml(occName)} • ${inv.age || 25} anos (${inv.era === "modern" ? "Era Moderna" : "Década de 1920"
+            })</div>
                     </div>
                   </div>
 
@@ -594,8 +593,8 @@ function renderDashboard(root) {
                   <button type="button" class="btn btn-primary btn-sm" data-open-id="${inv.id}" style="flex:1;">
                     <i class="fa-solid fa-scroll"></i> Abrir Ficha
                   </button>
-                  <button type="button" class="btn btn-sm" data-edit-id="${inv.id}" title="Editar no Wizard">
-                    <i class="fa-solid fa-pen-to-square"></i> Wizard
+                  <button type="button" class="btn btn-sm" data-edit-id="${inv.id}" title="Editar Ficha">
+                    <i class="fa-solid fa-pen-to-square"></i> Editar Ficha
                   </button>
                   <button type="button" class="btn btn-sm" data-del-id="${inv.id}" title="Excluir Investigador" aria-label="Excluir Investigador">
                     <i class="fa-solid fa-trash-can"></i>
@@ -603,11 +602,11 @@ function renderDashboard(root) {
                 </div>
               </article>
             `;
-            })
-            .join("")}
+        })
+        .join("")}
         </div>
       `
-      }
+    }
     </section>
   `;
 
@@ -722,20 +721,19 @@ function renderCampaignsList(root) {
           </div>
           <div>
             <label>Selecionar Meu Investigador *</label>
-            ${
-              myInvs.length === 0
-                ? `<p style="font-size:0.8rem; color:var(--status-luck);">Você precisa criar um investigador antes de entrar como jogador.</p>`
-                : `
+            ${myInvs.length === 0
+      ? `<p style="font-size:0.8rem; color:var(--status-luck);">Você precisa criar um investigador antes de entrar como jogador.</p>`
+      : `
               <select id="joinInvestigatorSelect" required>
                 ${myInvs
-                  .map(
-                    (inv) =>
-                      `<option value="${inv.id}">${escapeHtml(inv.name)} (PV ${inv.derived?.hp}/${inv.derived?.max_hp} | SAN ${inv.derived?.sanity})</option>`
-                  )
-                  .join("")}
+        .map(
+          (inv) =>
+            `<option value="${inv.id}">${escapeHtml(inv.name)} (PV ${inv.derived?.hp}/${inv.derived?.max_hp} | SAN ${inv.derived?.sanity})</option>`
+        )
+        .join("")}
               </select>
             `
-            }
+    }
           </div>
           <button type="submit" class="btn btn-outline-crimson" ${myInvs.length === 0 ? "disabled" : ""}>
             <i class="fa-solid fa-door-open"></i> Entrar na Mesa com Investigador
@@ -748,42 +746,39 @@ function renderCampaignsList(root) {
     <section class="ornate-panel">
       <div class="section-banner">Minhas Mesas Ativas (${state.campaigns.length})</div>
 
-      ${
-        state.campaigns.length === 0
-          ? `
+      ${state.campaigns.length === 0
+      ? `
         <div style="text-align:center; padding:2rem 1rem; color:var(--text-secondary);">
           Nenhuma mesa vinculada ainda. Crie uma mesa acima ou entre usando um código de convite!
         </div>
       `
-          : `
+      : `
         <div class="investigators-grid">
           ${state.campaigns
-            .map((c) => {
-              const isKeeper = c.keeper_id === state.currentUser.id;
-              const memberCount = (c.campaign_members || []).length;
-              return `
+        .map((c) => {
+          const isKeeper = c.keeper_id === state.currentUser.id;
+          const memberCount = (c.campaign_members || []).length;
+          return `
               <article class="inv-card">
                 <div>
                   <div class="inv-card-header">
                     <div>
                       <h3 class="inv-card-name">${escapeHtml(c.name)}</h3>
                       <div class="inv-card-occ">
-                        ${
-                          isKeeper
-                            ? `<i class="fa-solid fa-crown"></i> Você é o Guardião`
-                            : `<i class="fa-solid fa-user-secret"></i> Jogador Investigador`
-                        } • ${c.era === "modern" ? "Era Moderna" : "Década de 1920"}
+                        ${isKeeper
+              ? `<i class="fa-solid fa-crown"></i> Você é o Guardião`
+              : `<i class="fa-solid fa-user-secret"></i> Jogador Investigador`
+            } • ${c.era === "modern" ? "Era Moderna" : "Década de 1920"}
                       </div>
                     </div>
                     <span class="invite-code-pill" title="Código de Convite">${escapeHtml(c.invite_code)}</span>
                   </div>
-                  ${
-                    c.description
-                      ? `<p style="font-size:0.82rem; color:var(--text-secondary); margin-top:0.5rem;">${escapeHtml(
-                          c.description
-                        )}</p>`
-                      : ""
-                  }
+                  ${c.description
+              ? `<p style="font-size:0.82rem; color:var(--text-secondary); margin-top:0.5rem;">${escapeHtml(
+                c.description
+              )}</p>`
+              : ""
+            }
                   <div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.65rem;">
                     <i class="fa-solid fa-users"></i> ${memberCount} investigador(es) na mesa
                   </div>
@@ -793,19 +788,18 @@ function renderCampaignsList(root) {
                   <button type="button" class="btn btn-primary btn-sm" data-enter-camp="${c.id}" style="flex:1;">
                     <i class="fa-solid fa-tower-broadcast"></i> Entrar na Sala Ao Vivo
                   </button>
-                  ${
-                    isKeeper
-                      ? `<button type="button" class="btn btn-sm" data-del-camp="${c.id}" title="Encerrar/Excluir Mesa"><i class="fa-solid fa-trash-can"></i></button>`
-                      : `<button type="button" class="btn btn-sm" data-leave-camp="${c.id}" title="Sair da Mesa"><i class="fa-solid fa-person-walking-arrow-right"></i></button>`
-                  }
+                  ${isKeeper
+              ? `<button type="button" class="btn btn-sm" data-del-camp="${c.id}" title="Encerrar/Excluir Mesa"><i class="fa-solid fa-trash-can"></i></button>`
+              : `<button type="button" class="btn btn-sm" data-leave-camp="${c.id}" title="Sair da Mesa"><i class="fa-solid fa-person-walking-arrow-right"></i></button>`
+            }
                 </div>
               </article>
             `;
-            })
-            .join("")}
+        })
+        .join("")}
         </div>
       `
-      }
+    }
     </section>
   `;
 
@@ -870,12 +864,21 @@ async function openCampaignRoom(campaignId) {
     state.view = "campaign_room";
     render();
 
-    await subscribeToCampaignRoom(campaignId, async () => {
-      if (state.view === "campaign_room" && state.activeCampaignRoom?.campaign?.id === campaignId) {
-        state.activeCampaignRoom = await getCampaignRoomData(campaignId);
-        renderCampaignRoom(document.getElementById("appRoot"));
+    await subscribeToCampaignRoom(
+      campaignId,
+      async () => {
+        if (state.view === "campaign_room" && state.activeCampaignRoom?.campaign?.id === campaignId) {
+          state.activeCampaignRoom = await getCampaignRoomData(campaignId);
+          renderCampaignRoom(document.getElementById("appRoot"));
+        }
+      },
+      (onlineMap) => {
+        state.onlineUsers = onlineMap || {};
+        if (state.view === "campaign_room" && state.activeCampaignRoom?.campaign?.id === campaignId) {
+          renderCampaignRoom(document.getElementById("appRoot"));
+        }
       }
-    });
+    );
   } catch (err) {
     alert(err.message || "Não foi possível abrir a sala da mesa.");
   }
@@ -889,6 +892,7 @@ function renderCampaignRoom(root) {
   const isKeeper = campaign.keeper_id === state.currentUser.id;
   const myMember = members.find((m) => m.user_id === state.currentUser.id);
   const myInv = myMember?.investigator || null;
+  const onlineList = Object.values(state.onlineUsers || {});
 
   root.innerHTML = `
     <!-- CABEÇALHO DA SALA AO VIVO -->
@@ -903,13 +907,12 @@ function renderCampaignRoom(root) {
             ${escapeHtml(campaign.name)}
           </h2>
           <div style="font-size:0.78rem; color:var(--text-secondary);">
-            ${
-              isKeeper
-                ? `<span style="color:var(--status-luck); font-weight:700;"><i class="fa-solid fa-crown"></i> Modo Guardião dos Mistérios</span>`
-                : `<span><i class="fa-solid fa-user-secret"></i> Jogador: ${escapeHtml(
-                    myInv?.name || getUserDisplayName(state.currentUser)
-                  )}</span>`
-            }
+            ${isKeeper
+      ? `<span style="color:var(--status-luck); font-weight:700;"><i class="fa-solid fa-crown"></i> Modo Guardião dos Mistérios</span>`
+      : `<span><i class="fa-solid fa-user-secret"></i> Jogador: ${escapeHtml(
+        myInv?.name || getUserDisplayName(state.currentUser)
+      )}</span>`
+    }
             ${campaign.description ? ` • ${escapeHtml(campaign.description)}` : ""}
           </div>
         </div>
@@ -920,25 +923,47 @@ function renderCampaignRoom(root) {
           <span style="font-size:0.72rem; color:var(--text-secondary); text-transform:uppercase; margin-right:0.35rem;">Código de Convite:</span>
           <span class="invite-code-pill">${escapeHtml(campaign.invite_code)}</span>
         </div>
-        ${
-          state.investigators.length > 0
-            ? `
+        ${state.investigators.length > 0
+      ? `
           <div style="display:flex; align-items:center; gap:0.4rem;">
             <select id="roomSwitchInvestigator" style="width:auto; padding:0.3rem 0.55rem; font-size:0.78rem;">
               <option value="">-- Vincular/Trocar Meu Personagem --</option>
               ${state.investigators
-                .map(
-                  (inv) =>
-                    `<option value="${inv.id}" ${myInv?.id === inv.id ? "selected" : ""}>${escapeHtml(
-                      inv.name
-                    )}</option>`
-                )
-                .join("")}
+        .map(
+          (inv) =>
+            `<option value="${inv.id}" ${myInv?.id === inv.id ? "selected" : ""}>${escapeHtml(
+              inv.name
+            )}</option>`
+        )
+        .join("")}
             </select>
           </div>
         `
-            : ""
-        }
+      : ""
+    }
+      </div>
+
+      <!-- BARRA DE QUEM ESTÁ ONLINE AGORA NA MESA -->
+      <div class="presence-bar" style="width:100%; margin-top:0.2rem;">
+        <span style="font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.06em; font-weight:700;">
+          <i class="fa-solid fa-signal" style="color:var(--status-success); margin-right:0.3rem;"></i>
+          Online na Sala Agora (${onlineList.length}):
+        </span>
+        ${onlineList.length === 0
+      ? `<span style="font-size:0.75rem; color:var(--text-muted);">Sincronizando presença...</span>`
+      : onlineList
+        .map((u) => {
+          const uIsKeeper = u.user_id === campaign.keeper_id;
+          return `
+                  <span class="presence-badge">
+                    <span class="presence-dot online"></span>
+                    ${uIsKeeper ? `<i class="fa-solid fa-crown" style="color:var(--status-luck);"></i>` : `<i class="fa-solid fa-user"></i>`}
+                    ${escapeHtml(u.name || "Investigador")}${uIsKeeper ? " (Guardião)" : ""}
+                  </span>
+                `;
+        })
+        .join("")
+    }
       </div>
     </div>
 
@@ -946,213 +971,218 @@ function renderCampaignRoom(root) {
     <div class="campaign-room-grid">
       <!-- COLUNA ESQUERDA: INVESTIGADORES NA MESA & PAINEL DE ROLAGEM -->
       <div>
-        <!-- PAINEL EXCLUSIVO DO GUARDIÃO (SE FOR O CRIADOR DA MESA) -->
-        ${
-          isKeeper
-            ? `
-          <section class="ornate-panel" style="border-color:var(--status-san);">
-            <div class="section-banner" style="margin-bottom:0.85rem;">
-              <i class="fa-solid fa-crown"></i> Escudo de Rolagens do Guardião
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:0.85rem;">
+        <!-- PAINEL DE ROLAGEM DE DADOS (PARA O GUARDIÃO E TAMBÉM PARA JOGADORES: 1D3 A 1D100) -->
+        <section class="ornate-panel" style="border-color:${isKeeper ? "var(--status-san)" : "var(--border-ornate)"};">
+          <div class="section-banner" style="margin-bottom:0.85rem;">
+            ${isKeeper
+      ? `<i class="fa-solid fa-crown"></i> Escudo de Rolagens do Guardião (1D3 a 1D100)`
+      : `<i class="fa-solid fa-dice-d20"></i> Rolador de Dados da Mesa (1D3 a 1D100)`
+    }
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:0.85rem;">
+            ${isKeeper
+      ? `
               <label class="flag-check" style="font-size:0.85rem; color:var(--text-primary); font-weight:600; background:rgba(139,92,246,0.14); padding:0.45rem 0.8rem; border:1px solid var(--status-san); border-radius:4px;">
                 <input type="checkbox" id="chkKeeperSecret" ${state.keeperSecretMode ? "checked" : ""} />
                 <i class="fa-solid fa-eye-slash" style="color:var(--status-san);"></i>
                 Rolagem Oculta do Guardião (Invisível para os Jogadores)
               </label>
+            `
+      : `<div style="font-size:0.82rem; color:var(--text-secondary);">Role qualquer dado livremente na mesa ou faça um teste percentual de 1D100:</div>`
+    }
 
-              <div style="display:flex; align-items:center; gap:0.4rem;">
-                <input type="number" id="keeperTargetPct" min="1" max="99" value="50" style="width:72px; padding:0.3rem 0.45rem; font-family:var(--font-mono);" title="Alvo % para teste 1D100 do Guardião" />
-                <button type="button" class="btn btn-primary btn-sm" id="btnKeeperRollD100">
-                  <i class="fa-solid fa-dice-d20"></i> Rolar 1D100 (Alvo %)
-                </button>
-              </div>
+            <div style="display:flex; align-items:center; gap:0.4rem;">
+              <input type="number" id="tableTargetPct" min="1" max="99" value="50" style="width:72px; padding:0.3rem 0.45rem; font-family:var(--font-mono);" title="Alvo % para teste 1D100" />
+              <button type="button" class="btn btn-primary btn-sm" id="btnTableRollD100">
+                <i class="fa-solid fa-dice-d20"></i> Rolar 1D100 (Alvo %)
+              </button>
             </div>
+          </div>
 
-            <div style="display:flex; gap:0.45rem; flex-wrap:wrap;">
-              ${[3, 4, 6, 8, 10, 20, 100]
-                .map(
-                  (sides) => `
-                <button type="button" class="btn btn-sm" data-keeper-die="${sides}">
-                  <i class="fa-solid fa-dice"></i> 1D${sides}
-                </button>
-              `
-                )
-                .join("")}
-            </div>
-          </section>
-        `
-            : ""
-        }
+          <div style="display:flex; gap:0.45rem; flex-wrap:wrap;">
+            ${[3, 4, 6, 8, 10, 20, 100]
+      .map(
+        (sides) => `
+              <button type="button" class="btn btn-sm" data-table-die="${sides}">
+                <i class="fa-solid fa-dice"></i> 1D${sides}
+              </button>
+            `
+      )
+      .join("")}
+          </div>
+        </section>
 
         <!-- MONITORAMENTO AO VIVO DOS INVESTIGADORES DA MESA -->
         <section class="ornate-panel">
           <div class="section-banner">Status Ao Vivo dos Investigadores na Mesa (${members.filter((m) => m.investigator).length})</div>
 
-          ${
-            members.filter((m) => m.investigator).length === 0
-              ? `
+          ${members.filter((m) => m.investigator).length === 0
+      ? `
             <div style="text-align:center; padding:1.75rem 1rem; color:var(--text-secondary); font-size:0.88rem;">
               Nenhum investigador vinculado à mesa ainda. Compartilhe o código <strong>${escapeHtml(
-                campaign.invite_code
-              )}</strong> com os jogadores ou selecione um personagem no topo!
+        campaign.invite_code
+      )}</strong> com os jogadores ou selecione um personagem no topo!
             </div>
           `
-              : `
-            <div class="investigators-grid" style="grid-template-columns:repeat(auto-fill, minmax(290px, 1fr));">
+      : `
+            <div class="investigators-grid" style="grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));">
               ${members
-                .filter((m) => m.investigator)
-                .map((m) => {
-                  const inv = m.investigator;
-                  const d = inv.derived || {};
-                  const c = inv.characteristics || {};
-                  const occ = OCCUPATIONS_CATALOG.find((o) => o.id === inv.occupation_id);
-                  const occName = inv.custom_occupation_name || occ?.name || "Investigador";
-                  const canControl = m.user_id === state.currentUser.id || isKeeper;
+        .filter((m) => m.investigator)
+        .map((m) => {
+          const inv = m.investigator;
+          const d = inv.derived || {};
+          const c = inv.characteristics || {};
+          const occ = OCCUPATIONS_CATALOG.find((o) => o.id === inv.occupation_id);
+          const occName = inv.custom_occupation_name || occ?.name || "Investigador";
+          const canControl = m.user_id === state.currentUser.id || isKeeper;
+          const isUserOnline = Boolean(state.onlineUsers?.[m.user_id]);
 
-                  const activeConditions = [];
-                  if (d.major_wound) activeConditions.push("Lesão Grave");
-                  if (d.unconscious) activeConditions.push("Inconsciente");
-                  if (d.dying) activeConditions.push("Morrendo");
-                  if (d.temp_insanity) activeConditions.push("Insan. Temporária");
-                  if (d.indef_insanity) activeConditions.push("Insan. Indefinida");
-                  if (d.out_of_luck) activeConditions.push("Sem Sorte");
+          const activeConditions = [];
+          if (d.major_wound) activeConditions.push("Lesão Grave");
+          if (d.unconscious) activeConditions.push("Inconsciente");
+          if (d.dying) activeConditions.push("Morrendo");
+          if (d.temp_insanity) activeConditions.push("Insan. Temporária");
+          if (d.indef_insanity) activeConditions.push("Insan. Indefinida");
+          if (d.out_of_luck) activeConditions.push("Sem Sorte");
 
-                  return `
-                  <article class="inv-card" style="border-color:${
-                    m.user_id === state.currentUser.id ? "var(--crimson-primary)" : "var(--border-ornate)"
-                  };">
+          return `
+                  <article class="inv-card" style="border-color:${m.user_id === state.currentUser.id ? "var(--crimson-primary)" : "var(--border-ornate)"
+            };">
                     <div>
                       <div class="inv-card-header">
                         <div>
-                          <h3 class="inv-card-name">${escapeHtml(inv.name)}</h3>
+                          <div style="display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
+                            <h3 class="inv-card-name">${escapeHtml(inv.name)}</h3>
+                            <span class="presence-badge" style="padding:0.1rem 0.45rem; font-size:0.68rem;">
+                              <span class="presence-dot ${isUserOnline ? "online" : "offline"}"></span>
+                              ${isUserOnline ? "Online" : "Offline"}
+                            </span>
+                          </div>
                           <div class="inv-card-occ">${escapeHtml(occName)} • Jogador: ${escapeHtml(
-                    inv.player_name || "Investigador"
-                  )}</div>
+              inv.player_name || "Investigador"
+            )}</div>
                         </div>
-                        ${
-                          m.user_id === state.currentUser.id || isKeeper
-                            ? `<button type="button" class="btn btn-sm" data-room-open-sheet="${inv.id}" title="Abrir Ficha Completa"><i class="fa-solid fa-scroll"></i> Ficha</button>`
-                            : ""
-                        }
+                        ${m.user_id === state.currentUser.id || isKeeper
+              ? `<button type="button" class="btn btn-sm" data-room-open-sheet="${inv.id}" title="Abrir Ficha Completa"><i class="fa-solid fa-scroll"></i> Ficha</button>`
+              : ""
+            }
                       </div>
 
                       <div class="inv-stat-pills" style="margin-top:0.75rem;">
+                        <!-- PV -->
                         <div class="stat-pill">
-                          <div class="lbl">PV</div>
-                          <div class="val" style="color:var(--status-hp);">${d.hp}/${d.max_hp}</div>
-                          ${
-                            canControl
-                              ? `<div style="display:flex; justify-content:center; gap:0.25rem; margin-top:0.25rem;">
+                          <div class="lbl">PV (Máx ${d.max_hp})</div>
+                          ${canControl
+              ? `<div class="live-stat-row">
                                   <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:hp:-1">−</button>
+                                  <input type="number" class="live-stat-input" style="color:var(--status-hp);" min="0" max="${d.max_hp}" value="${d.hp}" data-room-stat-input="${inv.id}:hp" />
                                   <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:hp:1">+</button>
                                 </div>`
-                              : ""
-                          }
+              : `<div class="val" style="color:var(--status-hp);">${d.hp}/${d.max_hp}</div>`
+            }
                         </div>
+
+                        <!-- SAN -->
                         <div class="stat-pill">
-                          <div class="lbl">SAN</div>
-                          <div class="val" style="color:var(--status-san);">${d.sanity}/${d.max_sanity}</div>
-                          ${
-                            canControl
-                              ? `<div style="display:flex; justify-content:center; gap:0.25rem; margin-top:0.25rem;">
+                          <div class="lbl">SAN (Máx ${d.max_sanity})</div>
+                          ${canControl
+              ? `<div class="live-stat-row">
                                   <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:sanity:-1">−</button>
+                                  <input type="number" class="live-stat-input" style="color:var(--status-san);" min="0" max="${d.max_sanity}" value="${d.sanity}" data-room-stat-input="${inv.id}:sanity" />
                                   <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:sanity:1">+</button>
                                 </div>`
-                              : ""
-                          }
+              : `<div class="val" style="color:var(--status-san);">${d.sanity}/${d.max_sanity}</div>`
+            }
                         </div>
+
+                        <!-- SORTE -->
                         <div class="stat-pill">
-                          <div class="lbl">Sorte</div>
-                          <div class="val" style="color:var(--status-luck);">${c.luck}%</div>
-                          ${
-                            canControl
-                              ? `<div style="display:flex; justify-content:center; gap:0.25rem; margin-top:0.25rem;">
+                          <div class="lbl">Sorte (%)</div>
+                          ${canControl
+              ? `<div class="live-stat-row">
                                   <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:luck:-1">−</button>
+                                  <input type="number" class="live-stat-input" style="color:var(--status-luck);" min="0" max="99" value="${c.luck}" data-room-stat-input="${inv.id}:luck" />
                                   <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:luck:1">+</button>
                                 </div>`
-                              : ""
-                          }
+              : `<div class="val" style="color:var(--status-luck);">${c.luck}%</div>`
+            }
                         </div>
+
+                        <!-- PM -->
                         <div class="stat-pill">
-                          <div class="lbl">PM</div>
-                          <div class="val" style="color:var(--status-mp);">${d.mp}/${d.max_mp}</div>
-                          ${
-                            canControl
-                              ? `<div style="display:flex; justify-content:center; gap:0.25rem; margin-top:0.25rem;">
+                          <div class="lbl">PM (Máx ${d.max_mp})</div>
+                          ${canControl
+              ? `<div class="live-stat-row">
                                   <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:mp:-1">−</button>
+                                  <input type="number" class="live-stat-input" style="color:var(--status-mp);" min="0" max="${d.max_mp}" value="${d.mp}" data-room-stat-input="${inv.id}:mp" />
                                   <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:mp:1">+</button>
                                 </div>`
-                              : ""
-                          }
+              : `<div class="val" style="color:var(--status-mp);">${d.mp}/${d.max_mp}</div>`
+            }
                         </div>
                       </div>
 
                       <div style="margin-top:0.65rem; display:flex; gap:0.35rem; flex-wrap:wrap;">
-                        ${
-                          activeConditions.length === 0
-                            ? `<span style="font-size:0.74rem; color:var(--status-success);"><i class="fa-solid fa-heart-pulse"></i> Estável</span>`
-                            : activeConditions
-                                .map(
-                                  (cond) =>
-                                    `<span class="char-formula-badge" style="color:#fca5a5; border:1px solid var(--crimson-primary);">${cond}</span>`
-                                )
-                                .join("")
-                        }
+                        ${activeConditions.length === 0
+              ? `<span style="font-size:0.74rem; color:var(--status-success);"><i class="fa-solid fa-heart-pulse"></i> Estável</span>`
+              : activeConditions
+                .map(
+                  (cond) =>
+                    `<span class="char-formula-badge" style="color:#fca5a5; border:1px solid var(--crimson-primary);">${cond}</span>`
+                )
+                .join("")
+            }
                       </div>
                     </div>
                   </article>
                 `;
-                })
-                .join("")}
+        })
+        .join("")}
             </div>
           `
-          }
+    }
         </section>
 
         <!-- ATALHO DE ROLAGENS DO MEU INVESTIGADOR NA SALA -->
-        ${
-          myInv
-            ? `
+        ${myInv
+      ? `
           <section class="ornate-panel">
             <div class="section-banner">Rolagem Rápida na Mesa: ${escapeHtml(myInv.name)}</div>
             <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.8rem;">
               ${PRIMARY_CHARACTERISTICS.map((attr) => {
-                const val = myInv.characteristics?.[attr.key] || 50;
-                return `
+        const val = myInv.characteristics?.[attr.key] || 50;
+        return `
                   <button type="button" class="btn btn-sm" data-player-roll-label="${attr.sigla} (${attr.name})" data-player-roll-val="${val}">
                     <i class="fa-solid fa-dice-d20"></i> ${attr.sigla} (${val}%)
                   </button>
                 `;
-              }).join("")}
-              <button type="button" class="btn btn-sm" style="border-color:var(--status-san);" data-player-roll-label="Sanidade" data-player-roll-val="${
-                myInv.derived?.sanity || 50
-              }">
+      }).join("")}
+              <button type="button" class="btn btn-sm" style="border-color:var(--status-san);" data-player-roll-label="Sanidade" data-player-roll-val="${myInv.derived?.sanity || 50
+      }">
                 <i class="fa-solid fa-dice-d20"></i> SAN (${myInv.derived?.sanity || 50}%)
               </button>
-              <button type="button" class="btn btn-sm" style="border-color:var(--status-luck);" data-player-roll-label="Sorte" data-player-roll-val="${
-                myInv.characteristics?.luck || 50
-              }">
+              <button type="button" class="btn btn-sm" style="border-color:var(--status-luck);" data-player-roll-label="Sorte" data-player-roll-val="${myInv.characteristics?.luck || 50
+      }">
                 <i class="fa-solid fa-dice-d20"></i> Sorte (${myInv.characteristics?.luck || 50}%)
               </button>
             </div>
 
             <div class="skills-sheet-grid" style="max-height:260px; overflow-y:auto; padding-right:0.25rem;">
               ${SKILLS_CATALOG.map((sk) => {
-                const entry = myInv.skills?.[sk.id] || {
-                  base_value: getSkillBaseValue(sk, myInv.characteristics || {}),
-                  occupation_points: 0,
-                  personal_points: 0,
-                  experience_points: 0
-                };
-                const total = Math.min(
-                  99,
-                  (entry.base_value || 0) +
-                    (entry.occupation_points || 0) +
-                    (entry.personal_points || 0) +
-                    (entry.experience_points || 0)
-                );
-                return `
+        const entry = myInv.skills?.[sk.id] || {
+          base_value: getSkillBaseValue(sk, myInv.characteristics || {}),
+          occupation_points: 0,
+          personal_points: 0,
+          experience_points: 0
+        };
+        const total = Math.min(
+          99,
+          (entry.base_value || 0) +
+          (entry.occupation_points || 0) +
+          (entry.personal_points || 0) +
+          (entry.experience_points || 0)
+        );
+        return `
                   <button
                     type="button"
                     class="btn btn-sm"
@@ -1164,78 +1194,79 @@ function renderCampaignRoom(root) {
                     <span style="font-family:var(--font-mono);">${total}%</span>
                   </button>
                 `;
-              }).join("")}
+      }).join("")}
             </div>
           </section>
         `
-            : ""
-        }
+      : ""
+    }
       </div>
 
       <!-- COLUNA DIREITA: CHAT & REGISTRO DE ROLAGENS AO VIVO -->
       <aside class="chat-panel">
-        <div class="section-banner" style="margin-bottom:0;">
-          <i class="fa-solid fa-comments"></i> Chat & Rolagens Ao Vivo
+        <div class="section-banner" style="margin-bottom:0; display:flex; justify-content:space-between; align-items:center; padding:0.45rem 0.85rem;">
+          <span><i class="fa-solid fa-comments"></i> Chat & Rolagens Ao Vivo</span>
+          ${messages.length > 0
+      ? `<button type="button" class="btn btn-sm btn-danger" id="btnClearCampaignChat" style="padding:0.18rem 0.55rem; font-size:0.7rem;" title="Limpar todo o histórico de conversa da mesa">
+                <i class="fa-solid fa-broom"></i> Limpar Histórico
+              </button>`
+      : ""
+    }
         </div>
 
         <div class="chat-messages-list" id="roomChatList">
-          ${
-            messages.length === 0
-              ? `<div style="text-align:center; color:var(--text-muted); font-size:0.82rem; margin-top:2rem;">Nenhuma rolagem ou mensagem registrada ainda nesta sessão.</div>`
-              : messages
-                  .map((m) => {
-                    const timeStr = new Date(m.created_at).toLocaleTimeString("pt-BR", {
-                      hour: "2-digit",
-                      minute: "2-digit"
-                    });
-                    if (m.message_type === "roll") {
-                      return `
+          ${messages.length === 0
+      ? `<div style="text-align:center; color:var(--text-muted); font-size:0.82rem; margin-top:2rem;">Nenhuma rolagem ou mensagem registrada ainda nesta sessão.</div>`
+      : messages
+        .map((m) => {
+          const timeStr = new Date(m.created_at).toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit"
+          });
+          if (m.message_type === "roll") {
+            return `
                         <div class="chat-msg roll-msg ${m.is_keeper_secret ? "secret-msg" : ""}">
                           <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.74rem; color:var(--text-secondary); margin-bottom:0.25rem;">
                             <strong>
-                              ${
-                                m.sender_role === "keeper"
-                                  ? `<i class="fa-solid fa-crown" style="color:var(--status-luck);"></i> `
-                                  : `<i class="fa-solid fa-user-secret"></i> `
-                              }${escapeHtml(m.sender_name)}
+                              ${m.sender_role === "keeper"
+                ? `<i class="fa-solid fa-crown" style="color:var(--status-luck);"></i> `
+                : `<i class="fa-solid fa-user-secret"></i> `
+              }${escapeHtml(m.sender_name)}
                             </strong>
                             <span>
-                              ${
-                                m.is_keeper_secret
-                                  ? `<span style="color:var(--status-san); font-weight:700; margin-right:0.4rem;"><i class="fa-solid fa-eye-slash"></i> Oculto do Guardião</span>`
-                                  : ""
-                              }
+                              ${m.is_keeper_secret
+                ? `<span style="color:var(--status-san); font-weight:700; margin-right:0.4rem;"><i class="fa-solid fa-eye-slash"></i> Oculto do Guardião</span>`
+                : ""
+              }
                               ${timeStr}
                             </span>
                           </div>
                           <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
                             <div>
                               <div style="font-weight:600; color:var(--text-primary);">${escapeHtml(m.content)}</div>
-                              ${
-                                m.roll_target
-                                  ? `<div style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-muted);">Alvo: ${m.roll_target}% (½: ${Math.floor(
-                                      m.roll_target / 2
-                                    )}% | ⅕: ${Math.floor(m.roll_target / 5)}%)</div>`
-                                  : ""
-                              }
+                              ${m.roll_target
+                ? `<div style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-muted);">Alvo: ${m.roll_target}% (½: ${Math.floor(
+                  m.roll_target / 2
+                )}% | ⅕: ${Math.floor(m.roll_target / 5)}%)</div>`
+                : ""
+              }
                             </div>
                             <div style="display:flex; align-items:center; gap:0.5rem;">
                               <span style="font-family:var(--font-mono); font-size:1.25rem; font-weight:800;">
                                 ${m.roll_result}
                               </span>
-                              ${
-                                m.roll_level
-                                  ? `<span class="roll-badge ${m.roll_code || "regular"}" style="font-size:0.68rem;">${escapeHtml(
-                                      m.roll_level
-                                    )}</span>`
-                                  : ""
-                              }
+                              ${m.roll_level
+                ? `<span class="roll-badge ${m.roll_code || "regular"}" style="font-size:0.68rem;">${escapeHtml(
+                  m.roll_level
+                )}</span>`
+                : ""
+              }
                             </div>
                           </div>
                         </div>
                       `;
-                    }
-                    return `
+          }
+          return `
                       <div class="chat-msg">
                         <div style="display:flex; justify-content:space-between; font-size:0.73rem; color:var(--text-secondary); margin-bottom:0.2rem;">
                           <strong>${escapeHtml(m.sender_name)}</strong>
@@ -1244,9 +1275,9 @@ function renderCampaignRoom(root) {
                         <div>${escapeHtml(m.content)}</div>
                       </div>
                     `;
-                  })
-                  .join("")
-          }
+        })
+        .join("")
+    }
         </div>
 
         <form id="formRoomChat" style="display:flex; gap:0.45rem; padding:0.75rem; border-top:1px solid var(--border-ornate); background:var(--bg-elevated);">
@@ -1267,6 +1298,7 @@ function renderCampaignRoom(root) {
 
   root.querySelector("#btnBackToCampaigns")?.addEventListener("click", async () => {
     await unsubscribeFromCampaignRoom();
+    state.onlineUsers = {};
     state.view = "campaigns";
     state.campaigns = await listMyCampaigns();
     render();
@@ -1284,44 +1316,58 @@ function renderCampaignRoom(root) {
     state.keeperSecretMode = e.target.checked;
   });
 
-  // Rolagem 1D100 do Guardião
-  root.querySelector("#btnKeeperRollD100")?.addEventListener("click", async () => {
-    const target = Number(root.querySelector("#keeperTargetPct")?.value) || 50;
+  // Limpar todo o histórico de chat da mesa
+  root.querySelector("#btnClearCampaignChat")?.addEventListener("click", async () => {
+    if (!confirm("Deseja limpar todo o histórico de mensagens e rolagens desta mesa?")) return;
+    try {
+      await clearCampaignMessages(campaign.id);
+      state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
+      render();
+    } catch (err) {
+      alert(err.message || "Erro ao limpar o histórico do chat.");
+    }
+  });
+
+  // Rolagem 1D100 (Guardião ou Jogador)
+  root.querySelector("#btnTableRollD100")?.addEventListener("click", async () => {
+    const target = Number(root.querySelector("#tableTargetPct")?.value) || 50;
     const evalRes = evaluateD100Roll(target);
-    triggerD100Toast("Rolagem do Guardião (1D100)", target, evalRes);
+    const senderName = isKeeper ? "Guardião" : myInv?.name || getUserDisplayName(state.currentUser);
+    triggerD100Toast(`Rolagem 1D100 (${senderName})`, target, evalRes);
 
     await sendCampaignMessage({
       campaign_id: campaign.id,
-      sender_name: "Guardião",
-      sender_role: "keeper",
+      sender_name: senderName,
+      sender_role: isKeeper ? "keeper" : "player",
       message_type: "roll",
-      content: "Teste 1D100 do Guardião",
+      content: isKeeper ? "Teste 1D100 do Guardião" : "Teste Livre 1D100",
       roll_result: evalRes.roll,
       roll_target: evalRes.target,
       roll_level: evalRes.level,
       roll_code: evalRes.code,
-      is_keeper_secret: state.keeperSecretMode
+      is_keeper_secret: isKeeper ? state.keeperSecretMode : false
     });
     state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
     render();
   });
 
-  // Dados poliedrais do Guardião (1D3 a 1D100)
-  root.querySelectorAll("[data-keeper-die]").forEach((btn) => {
+  // Dados poliedrais da mesa (1D3 a 1D100 para Guardião e Jogadores)
+  root.querySelectorAll("[data-table-die]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const sides = Number(btn.getAttribute("data-keeper-die"));
+      const sides = Number(btn.getAttribute("data-table-die"));
       const val = rollDie(sides);
+      const senderName = isKeeper ? "Guardião" : myInv?.name || getUserDisplayName(state.currentUser);
       await sendCampaignMessage({
         campaign_id: campaign.id,
-        sender_name: "Guardião",
-        sender_role: "keeper",
+        sender_name: senderName,
+        sender_role: isKeeper ? "keeper" : "player",
         message_type: "roll",
         content: `Rolou 1D${sides}`,
         roll_result: val,
         roll_target: null,
         roll_level: `1D${sides}`,
         roll_code: "regular",
-        is_keeper_secret: state.keeperSecretMode
+        is_keeper_secret: isKeeper ? state.keeperSecretMode : false
       });
       state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
       render();
@@ -1353,7 +1399,7 @@ function renderCampaignRoom(root) {
     });
   });
 
-  // Ajuste de PV / SAN / Sorte / PM ao vivo direto na mesa
+  // Ajuste de PV / SAN / Sorte / PM ao vivo pelos botões +/-
   root.querySelectorAll("[data-room-stat]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const [invId, stat, deltaStr] = btn.getAttribute("data-room-stat").split(":");
@@ -1370,6 +1416,31 @@ function renderCampaignRoom(root) {
         sheet.derived.mp = Math.max(0, Math.min(sheet.derived.max_mp, (sheet.derived.mp || 0) + delta));
       } else if (stat === "luck") {
         sheet.characteristics.luck = Math.max(0, Math.min(99, (sheet.characteristics.luck || 0) + delta));
+      }
+      await updateLiveInvestigatorStatus(sheet);
+      state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
+      render();
+    });
+  });
+
+  // Ajuste de PV / SAN / Sorte / PM digitando ou nas setinhas do input numérico
+  root.querySelectorAll("[data-room-stat-input]").forEach((inp) => {
+    inp.addEventListener("change", async () => {
+      const [invId, stat] = inp.getAttribute("data-room-stat-input").split(":");
+      const newVal = Number(inp.value);
+      if (Number.isNaN(newVal)) return;
+      const mem = members.find((m) => m.investigator?.id === invId);
+      if (!mem || !mem.investigator) return;
+      const sheet = mem.investigator;
+
+      if (stat === "hp") {
+        sheet.derived.hp = Math.max(0, Math.min(sheet.derived.max_hp, newVal));
+      } else if (stat === "sanity") {
+        sheet.derived.sanity = Math.max(0, Math.min(sheet.derived.max_sanity, newVal));
+      } else if (stat === "mp") {
+        sheet.derived.mp = Math.max(0, Math.min(sheet.derived.max_mp, newVal));
+      } else if (stat === "luck") {
+        sheet.characteristics.luck = Math.max(0, Math.min(99, newVal));
       }
       await updateLiveInvestigatorStatus(sheet);
       state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
@@ -1616,44 +1687,38 @@ function renderWizard(root) {
   root.innerHTML = `
     <div class="wizard-steps">
       ${stepsMeta
-        .map(
-          (s) => `
-        <button type="button" class="wizard-step-tab ${state.wizardStep === s.num ? "active" : ""} ${
-            s.num < state.wizardStep ? "completed" : ""
+      .map(
+        (s) => `
+        <button type="button" class="wizard-step-tab ${state.wizardStep === s.num ? "active" : ""} ${s.num < state.wizardStep ? "completed" : ""
           }" data-goto-step="${s.num}">
           <span class="step-num">${s.num}</span>
           <span class="step-label">${s.title}</span>
         </button>
       `
-        )
-        .join("")}
+      )
+      .join("")}
     </div>
 
     <div id="wizardStepContent"></div>
 
     <div class="ornate-panel" style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
-      <div style="font-size:0.86rem; color:${
-        stepValidation.valid ? "var(--status-success)" : "var(--status-luck)"
-      }; font-weight:600;">
-        <i class="fa-solid ${
-          stepValidation.valid ? "fa-circle-check" : "fa-triangle-exclamation"
-        }"></i> ${escapeHtml(stepValidation.message)}
+      <div style="font-size:0.86rem; color:${stepValidation.valid ? "var(--status-success)" : "var(--status-luck)"
+    }; font-weight:600;">
+        <i class="fa-solid ${stepValidation.valid ? "fa-circle-check" : "fa-triangle-exclamation"
+    }"></i> ${escapeHtml(stepValidation.message)}
       </div>
 
       <div style="display:flex; gap:0.65rem;">
         <button type="button" class="btn" id="btnWizardCancel">Cancelar</button>
-        ${
-          state.wizardStep > 1
-            ? `<button type="button" class="btn" id="btnWizardPrev"><i class="fa-solid fa-arrow-left"></i> Etapa Anterior</button>`
-            : ""
-        }
-        ${
-          state.wizardStep < 5
-            ? `<button type="button" class="btn btn-primary" id="btnWizardNext" ${
-                !stepValidation.valid ? "disabled" : ""
-              }>Próxima Etapa <i class="fa-solid fa-arrow-right"></i></button>`
-            : `<button type="button" class="btn btn-primary" id="btnWizardFinish"><i class="fa-solid fa-floppy-disk"></i> Salvar Investigador & Abrir Ficha</button>`
-        }
+        ${state.wizardStep > 1
+      ? `<button type="button" class="btn" id="btnWizardPrev"><i class="fa-solid fa-arrow-left"></i> Etapa Anterior</button>`
+      : ""
+    }
+        ${state.wizardStep < 5
+      ? `<button type="button" class="btn btn-primary" id="btnWizardNext" ${!stepValidation.valid ? "disabled" : ""
+      }>Próxima Etapa <i class="fa-solid fa-arrow-right"></i></button>`
+      : `<button type="button" class="btn btn-primary" id="btnWizardFinish"><i class="fa-solid fa-floppy-disk"></i> Salvar Investigador & Abrir Ficha</button>`
+    }
       </div>
     </div>
   `;
@@ -1759,8 +1824,8 @@ function renderWizardStep1(container, d) {
 
       <div class="chars-grid">
         ${PRIMARY_CHARACTERISTICS.map((attr) => {
-          const f = calcFractions(c[attr.key]);
-          return `
+    const f = calcFractions(c[attr.key]);
+    return `
             <div class="char-box-card">
               <div class="char-box-header">
                 <div>
@@ -1788,7 +1853,7 @@ function renderWizardStep1(container, d) {
               </div>
             </div>
           `;
-        }).join("")}
+  }).join("")}
 
         <!-- SORTE -->
         <div class="char-box-card" style="border-color:var(--status-luck);">
@@ -1822,52 +1887,48 @@ function renderWizardStep1(container, d) {
           <h4 style="font-family:var(--font-display); font-size:0.86rem; margin-bottom:0.5rem;">
             Verificações de Melhoria de EDU (${bracket.eduChecks})
           </h4>
-          ${
-            bracket.eduChecks > 0
-              ? `
+          ${bracket.eduChecks > 0
+      ? `
               <button type="button" class="btn btn-outline-crimson btn-sm" id="btnRunEduChecks">
                 <i class="fa-solid fa-dice-d20"></i> Executar ${bracket.eduChecks} Verificação(ões) de EDU (1D100)
               </button>
               <div style="margin-top:0.55rem; font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary);">
-                ${
-                  d.age_edu_logs.length > 0
-                    ? d.age_edu_logs.map((l) => `<div>• ${escapeHtml(l)}</div>`).join("")
-                    : "Nenhuma verificação rolada ainda."
-                }
+                ${d.age_edu_logs.length > 0
+        ? d.age_edu_logs.map((l) => `<div>• ${escapeHtml(l)}</div>`).join("")
+        : "Nenhuma verificação rolada ainda."
+      }
               </div>
             `
-              : `<p style="font-size:0.8rem; color:var(--text-muted);">Jovem (15–19 anos): EDU reduzida em 5 pontos automaticamente ao rolar.</p>`
-          }
+      : `<p style="font-size:0.8rem; color:var(--text-muted);">Jovem (15–19 anos): EDU reduzida em 5 pontos automaticamente ao rolar.</p>`
+    }
         </div>
 
-        ${
-          bracket.physicalPenaltyTotal > 0
-            ? `
+        ${bracket.physicalPenaltyTotal > 0
+      ? `
           <div style="background:var(--bg-elevated); padding:0.85rem; border-radius:4px; border:1px solid var(--border-subtle);">
             <h4 style="font-family:var(--font-display); font-size:0.86rem; margin-bottom:0.4rem;">
               Distribuir Penalidade Física (${bracket.physicalPenaltyTotal} pts entre ${bracket.physicalTargetLabels})
             </h4>
             <div style="display:flex; gap:0.65rem; margin-top:0.5rem;">
               ${bracket.physicalTargets
-                .map(
-                  (k) => `
+        .map(
+          (k) => `
                 <div style="flex:1;">
                   <label>Reduzir ${k.toUpperCase()}</label>
-                  <input type="number" min="0" max="${bracket.physicalPenaltyTotal}" data-age-deduct="${k}" value="${
-                    d.age_deductions[k] || 0
-                  }" />
+                  <input type="number" min="0" max="${bracket.physicalPenaltyTotal}" data-age-deduct="${k}" value="${d.age_deductions[k] || 0
+            }" />
                 </div>
               `
-                )
-                .join("")}
+        )
+        .join("")}
               <button type="button" class="btn btn-sm" id="btnApplyAgeDeduct" style="align-self:flex-end;">
                 Aplicar nos Atributos
               </button>
             </div>
           </div>
         `
-            : ""
-        }
+      : ""
+    }
       </div>
     </section>
 
@@ -2044,10 +2105,9 @@ function renderWizardStep2(container, d) {
 
       <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:0.85rem; margin-bottom:1.25rem;">
         ${OCCUPATIONS_CATALOG.map(
-          (o) => `
-          <div class="inv-card" style="cursor:pointer; border-color:${
-            d.occupation_id === o.id ? "var(--crimson-bright)" : "var(--border-ornate)"
-          }; background:${d.occupation_id === o.id ? "rgba(220,20,30,0.1)" : "var(--bg-elevated)"};" data-select-occ="${o.id}">
+    (o) => `
+          <div class="inv-card" style="cursor:pointer; border-color:${d.occupation_id === o.id ? "var(--crimson-bright)" : "var(--border-ornate)"
+      }; background:${d.occupation_id === o.id ? "rgba(220,20,30,0.1)" : "var(--bg-elevated)"};" data-select-occ="${o.id}">
             <div>
               <div style="display:flex; justify-content:space-between; align-items:center;">
                 <h4 style="font-family:var(--font-display); font-size:1rem;">${o.name}</h4>
@@ -2060,7 +2120,7 @@ function renderWizardStep2(container, d) {
             </div>
           </div>
         `
-        ).join("")}
+  ).join("")}
       </div>
 
       <div style="background:var(--bg-elevated); border:1px solid var(--border-ornate); padding:1rem; border-radius:6px;">
@@ -2086,51 +2146,49 @@ function renderWizardStep2(container, d) {
           </div>
         </div>
 
-        ${
-          occ.interpersonal_slots > 0
-            ? `
+        ${occ.interpersonal_slots > 0
+      ? `
           <div style="margin-bottom:0.9rem;">
             <label>Escolha ${occ.interpersonal_slots} Perícia(s) Interpessoal(is) da Profissão:</label>
             <div style="display:flex; gap:0.65rem; flex-wrap:wrap; margin-top:0.35rem;">
               ${interpersonalSkills
-                .map((sk) => {
-                  const checked = (d.selected_interpersonal || []).includes(sk.id);
-                  return `
+        .map((sk) => {
+          const checked = (d.selected_interpersonal || []).includes(sk.id);
+          return `
                   <label class="flag-check" style="background:var(--bg-input); padding:0.4rem 0.7rem; border:1px solid var(--border-subtle); border-radius:4px;">
                     <input type="checkbox" data-occ-interp="${sk.id}" ${checked ? "checked" : ""} />
                     ${sk.name} (${sk.base_value}%)
                   </label>
                 `;
-                })
-                .join("")}
+        })
+        .join("")}
             </div>
           </div>
         `
-            : ""
-        }
+      : ""
+    }
 
-        ${
-          occ.free_slots > 0
-            ? `
+        ${occ.free_slots > 0
+      ? `
           <div>
             <label>Escolha ${occ.free_slots} Perícia(s) Especial(is) / Livre(s) da Profissão (Selecionadas: ${(d.selected_free_skills || []).length}/${occ.free_slots}):</label>
             <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(195px, 1fr)); gap:0.4rem; margin-top:0.35rem; max-height:220px; overflow-y:auto; padding:0.4rem; background:var(--bg-input); border:1px solid var(--border-subtle);">
               ${freeSkillChoices
-                .map((sk) => {
-                  const checked = (d.selected_free_skills || []).includes(sk.id);
-                  return `
+        .map((sk) => {
+          const checked = (d.selected_free_skills || []).includes(sk.id);
+          return `
                   <label class="flag-check">
                     <input type="checkbox" data-occ-free="${sk.id}" ${checked ? "checked" : ""} />
                     ${sk.name} (${sk.base_value}%)
                   </label>
                 `;
-                })
-                .join("")}
+        })
+        .join("")}
             </div>
           </div>
         `
-            : ""
-        }
+      : ""
+    }
       </div>
     </section>
   `;
@@ -2225,11 +2283,10 @@ function renderWizardStep3(container, d) {
 
         <div class="stat-pill" style="border-color:var(--status-luck);">
           <div class="lbl">Nível de Crédito (${occ.name}: ${occ.credit_min}–${occ.credit_max}%)</div>
-          <div class="val" style="color:${
-            crTotal >= occ.credit_min && crTotal <= occ.credit_max
-              ? "var(--status-success)"
-              : "var(--status-luck)"
-          }; font-size:1.3rem;">
+          <div class="val" style="color:${crTotal >= occ.credit_min && crTotal <= occ.credit_max
+      ? "var(--status-success)"
+      : "var(--status-luck)"
+    }; font-size:1.3rem;">
             ${crTotal}% (${d.finances.economic_class})
           </div>
           <div style="font-size:0.7rem; color:var(--text-muted);">Aloque pontos ocupacionais em Nível de Crédito</div>
@@ -2258,36 +2315,32 @@ function renderWizardStep3(container, d) {
           </thead>
           <tbody>
             ${SKILLS_CATALOG.map((sk) => {
-              const entry = d.skills[sk.id];
-              const isOcc = entry.is_occupation_skill;
-              const isMythos = sk.id === "cthulhu_mythos";
-              const total = Math.min(
-                99,
-                entry.base_value + entry.occupation_points + entry.personal_points
-              );
-              const f = calcFractions(total);
+      const entry = d.skills[sk.id];
+      const isOcc = entry.is_occupation_skill;
+      const isMythos = sk.id === "cthulhu_mythos";
+      const total = Math.min(
+        99,
+        entry.base_value + entry.occupation_points + entry.personal_points
+      );
+      const f = calcFractions(total);
 
-              return `
-                <tr style="border-bottom:1px solid var(--border-subtle); background:${
-                  isOcc ? "rgba(220,20,30,0.07)" : "transparent"
-                };">
+      return `
+                <tr style="border-bottom:1px solid var(--border-subtle); background:${isOcc ? "rgba(220,20,30,0.07)" : "transparent"
+        };">
                   <td style="padding:0.4rem 0.5rem; font-weight:${isOcc ? "700" : "400"};">
-                    ${
-                      isOcc
-                        ? `<i class="fa-solid fa-star" style="color:var(--crimson-bright); font-size:0.72rem; margin-right:0.25rem;"></i>`
-                        : ""
-                    }
+                    ${isOcc
+          ? `<i class="fa-solid fa-star" style="color:var(--crimson-bright); font-size:0.72rem; margin-right:0.25rem;"></i>`
+          : ""
+        }
                     ${sk.name}
-                    ${
-                      sk.id === "credit_rating"
-                        ? `<span class="char-formula-badge">Obrigatório: ${occ.credit_min}–${occ.credit_max}%</span>`
-                        : ""
-                    }
-                    ${
-                      isMythos
-                        ? `<span class="char-formula-badge">Travado 0% na criação</span>`
-                        : ""
-                    }
+                    ${sk.id === "credit_rating"
+          ? `<span class="char-formula-badge">Obrigatório: ${occ.credit_min}–${occ.credit_max}%</span>`
+          : ""
+        }
+                    ${isMythos
+          ? `<span class="char-formula-badge">Travado 0% na criação</span>`
+          : ""
+        }
                   </td>
                   <td style="padding:0.4rem 0.5rem; font-family:var(--font-mono); color:var(--text-secondary);">
                     ${String(entry.base_value).padStart(2, "0")}%
@@ -2323,7 +2376,7 @@ function renderWizardStep3(container, d) {
                   </td>
                 </tr>
               `;
-            }).join("")}
+    }).join("")}
           </tbody>
         </table>
       </div>
@@ -2417,34 +2470,31 @@ function renderWizardStep4(container, d) {
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:1rem;">
         ${BACKSTORY_CATEGORIES.map((cat) => {
-          const entry = d.backstory[cat.id] || { entry_text: "", is_key_connection: false };
-          return `
-            <div style="background:var(--bg-elevated); border:1px solid ${
-              entry.is_key_connection ? "var(--status-luck)" : "var(--border-ornate)"
-            }; padding:0.85rem; border-radius:4px;">
+    const entry = d.backstory[cat.id] || { entry_text: "", is_key_connection: false };
+    return `
+            <div style="background:var(--bg-elevated); border:1px solid ${entry.is_key_connection ? "var(--status-luck)" : "var(--border-ornate)"
+      }; padding:0.85rem; border-radius:4px;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
                 <label style="margin:0; color:var(--text-primary);">
                   ${cat.number}. ${cat.title} ${cat.creationGroup ? "*" : "(Em Jogo)"}
                 </label>
-                ${
-                  cat.canBeKeyConnection
-                    ? `
+                ${cat.canBeKeyConnection
+        ? `
                   <label class="flag-check" style="color:var(--status-luck); font-weight:700;">
-                    <input type="radio" name="keyConnectionRadio" data-key-conn="${cat.id}" ${
-                        entry.is_key_connection ? "checked" : ""
-                      } />
+                    <input type="radio" name="keyConnectionRadio" data-key-conn="${cat.id}" ${entry.is_key_connection ? "checked" : ""
+        } />
                     <i class="fa-solid fa-star"></i> Conexão-Chave
                   </label>
                 `
-                    : ""
-                }
+        : ""
+      }
               </div>
               <textarea rows="2" data-backstory-txt="${cat.id}" placeholder="${escapeHtml(
-            cat.placeholder
-          )}">${escapeHtml(entry.entry_text)}</textarea>
+        cat.placeholder
+      )}">${escapeHtml(entry.entry_text)}</textarea>
             </div>
           `;
-        }).join("")}
+  }).join("")}
       </div>
     </section>
   `;
@@ -2500,8 +2550,8 @@ function renderWizardStep5(container, d) {
       <div style="margin-bottom:1.2rem;">
         <label>Equipamento e Pertences (Verso da Ficha)</label>
         <textarea id="wizEquipment" rows="3" placeholder="Itens carregados pelo investigador...">${escapeHtml(
-          d.personal_equipment
-        )}</textarea>
+    d.personal_equipment
+  )}</textarea>
       </div>
 
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
@@ -2525,8 +2575,8 @@ function renderWizardStep5(container, d) {
           </thead>
           <tbody>
             ${(d.weapons || [])
-              .map(
-                (w, idx) => `
+      .map(
+        (w, idx) => `
               <tr style="border-bottom:1px solid var(--border-subtle);">
                 <td style="padding:0.35rem;"><input type="text" data-wp-field="name" data-wp-idx="${idx}" value="${escapeHtml(w.name)}" /></td>
                 <td style="padding:0.35rem; width:90px;"><input type="number" data-wp-field="regular_value" data-wp-idx="${idx}" value="${w.regular_value}" /></td>
@@ -2536,16 +2586,15 @@ function renderWizardStep5(container, d) {
                 <td style="padding:0.35rem; width:80px;"><input type="text" data-wp-field="ammo" data-wp-idx="${idx}" value="${escapeHtml(w.ammo)}" /></td>
                 <td style="padding:0.35rem; width:80px;"><input type="text" data-wp-field="malfunction" data-wp-idx="${idx}" value="${escapeHtml(w.malfunction)}" /></td>
                 <td style="padding:0.35rem;">
-                  ${
-                    idx > 0
-                      ? `<button type="button" class="btn btn-sm" data-del-wp="${idx}" aria-label="Remover Arma"><i class="fa-solid fa-xmark"></i></button>`
-                      : ""
-                  }
+                  ${idx > 0
+            ? `<button type="button" class="btn btn-sm" data-del-wp="${idx}" aria-label="Remover Arma"><i class="fa-solid fa-xmark"></i></button>`
+            : ""
+          }
                 </td>
               </tr>
             `
-              )
-              .join("")}
+      )
+      .join("")}
           </tbody>
         </table>
       </div>
@@ -2610,9 +2659,9 @@ function renderEditableSheet(root, sheet) {
   const dodgeTotal = Math.min(
     99,
     (dodgeSkill.base_value || 0) +
-      (dodgeSkill.occupation_points || 0) +
-      (dodgeSkill.personal_points || 0) +
-      (dodgeSkill.experience_points || 0)
+    (dodgeSkill.occupation_points || 0) +
+    (dodgeSkill.personal_points || 0) +
+    (dodgeSkill.experience_points || 0)
   );
   const dodgeFrac = calcFractions(dodgeTotal);
 
@@ -2638,9 +2687,8 @@ function renderEditableSheet(root, sheet) {
       </div>
     </div>
 
-    ${
-      state.sheetTab === "front"
-        ? `
+    ${state.sheetTab === "front"
+      ? `
       <!-- ================= FRENTE DA FICHA EDITÁVEL ================= -->
       <div class="ornate-panel">
         <div style="display:grid; grid-template-columns:1.1fr 1.6fr; gap:1.25rem; align-items:start;">
@@ -2665,8 +2713,8 @@ function renderEditableSheet(root, sheet) {
             <div class="section-banner" style="margin-bottom:0.75rem;">CARACTERÍSTICAS</div>
             <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:0.65rem;">
               ${PRIMARY_CHARACTERISTICS.map((attr) => {
-                const f = calcFractions(c[attr.key]);
-                return `
+        const f = calcFractions(c[attr.key]);
+        return `
                   <div style="border:1px solid var(--border-subtle); padding:0.4rem; border-radius:3px; background:var(--bg-surface);">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
                       <span style="font-family:var(--font-display); font-weight:700; font-size:0.85rem;">${attr.sigla}</span>
@@ -2685,7 +2733,7 @@ function renderEditableSheet(root, sheet) {
                     </div>
                   </div>
                 `;
-              }).join("")}
+      }).join("")}
 
               <!-- TAXA DE MOVIMENTO -->
               <div style="border:1px solid var(--border-subtle); padding:0.4rem; border-radius:3px; background:var(--bg-surface); display:flex; flex-direction:column; justify-content:space-between;">
@@ -2708,7 +2756,7 @@ function renderEditableSheet(root, sheet) {
             </div>
             <div class="track-counter">
               <button type="button" class="btn btn-sm" data-stat-delta="hp:-1">−</button>
-              <div class="track-val-display" style="color:var(--status-hp);">${d.hp} / ${d.max_hp}</div>
+              <input type="number" class="live-stat-input" style="color:var(--status-hp); width:68px; font-size:1.15rem;" min="0" max="${d.max_hp}" value="${d.hp}" data-sheet-stat-input="hp" />
               <button type="button" class="btn btn-sm" data-stat-delta="hp:1">+</button>
             </div>
             <div class="track-flags">
@@ -2721,14 +2769,14 @@ function renderEditableSheet(root, sheet) {
           <!-- SANIDADE -->
           <div class="track-card">
             <div class="track-header">
-              <span class="track-title" style="color:var(--status-san);">Sanidade</span>
+              <span class="track-title" style="color:var(--status-san);">Sanidade (Máx ${d.max_sanity})</span>
               <button type="button" class="btn btn-sm" data-roll-d100-label="Teste de Sanidade" data-roll-d100-val="${d.sanity}" style="padding:0.1rem 0.45rem;">
                 <i class="fa-solid fa-dice-d20"></i> Rolar SAN
               </button>
             </div>
             <div class="track-counter">
               <button type="button" class="btn btn-sm" data-stat-delta="sanity:-1">−</button>
-              <div class="track-val-display" style="color:var(--status-san);">${d.sanity} / ${d.max_sanity}</div>
+              <input type="number" class="live-stat-input" style="color:var(--status-san); width:68px; font-size:1.15rem;" min="0" max="${d.max_sanity}" value="${d.sanity}" data-sheet-stat-input="sanity" />
               <button type="button" class="btn btn-sm" data-stat-delta="sanity:1">+</button>
             </div>
             <div class="track-flags">
@@ -2741,14 +2789,14 @@ function renderEditableSheet(root, sheet) {
           <!-- SORTE -->
           <div class="track-card">
             <div class="track-header">
-              <span class="track-title" style="color:var(--status-luck);">Sorte</span>
+              <span class="track-title" style="color:var(--status-luck);">Sorte (%)</span>
               <button type="button" class="btn btn-sm" data-roll-d100-label="Teste de Sorte" data-roll-d100-val="${c.luck}" style="padding:0.1rem 0.45rem;">
                 <i class="fa-solid fa-dice-d20"></i> Rolar Sorte
               </button>
             </div>
             <div class="track-counter">
               <button type="button" class="btn btn-sm" data-stat-delta="luck:-1">−</button>
-              <div class="track-val-display" style="color:var(--status-luck);">${c.luck}%</div>
+              <input type="number" class="live-stat-input" style="color:var(--status-luck); width:68px; font-size:1.15rem;" min="0" max="99" value="${c.luck}" data-sheet-stat-input="luck" />
               <button type="button" class="btn btn-sm" data-stat-delta="luck:1">+</button>
             </div>
             <div class="track-flags">
@@ -2764,7 +2812,7 @@ function renderEditableSheet(root, sheet) {
             </div>
             <div class="track-counter">
               <button type="button" class="btn btn-sm" data-stat-delta="mp:-1">−</button>
-              <div class="track-val-display" style="color:var(--status-mp);">${d.mp} / ${d.max_mp}</div>
+              <input type="number" class="live-stat-input" style="color:var(--status-mp); width:68px; font-size:1.15rem;" min="0" max="${d.max_mp}" value="${d.mp}" data-sheet-stat-input="mp" />
               <button type="button" class="btn btn-sm" data-stat-delta="mp:1">+</button>
             </div>
             <div class="track-flags">
@@ -2777,23 +2825,23 @@ function renderEditableSheet(root, sheet) {
         <div class="section-banner">PERÍCIAS DO INVESTIGADOR</div>
         <div class="skills-sheet-grid">
           ${SKILLS_CATALOG.map((sk) => {
-            const entry = sheet.skills?.[sk.id] || {
-              base_value: getSkillBaseValue(sk, c),
-              occupation_points: 0,
-              personal_points: 0,
-              experience_points: 0,
-              is_occupation_skill: false,
-              checked_for_improvement: false
-            };
-            const total = Math.min(
-              99,
-              (entry.base_value || 0) +
-                (entry.occupation_points || 0) +
-                (entry.personal_points || 0) +
-                (entry.experience_points || 0)
-            );
-            const frac = calcFractions(total);
-            return `
+        const entry = sheet.skills?.[sk.id] || {
+          base_value: getSkillBaseValue(sk, c),
+          occupation_points: 0,
+          personal_points: 0,
+          experience_points: 0,
+          is_occupation_skill: false,
+          checked_for_improvement: false
+        };
+        const total = Math.min(
+          99,
+          (entry.base_value || 0) +
+          (entry.occupation_points || 0) +
+          (entry.personal_points || 0) +
+          (entry.experience_points || 0)
+        );
+        const frac = calcFractions(total);
+        return `
               <div class="skill-row ${entry.is_occupation_skill ? "is-occ" : ""}">
                 <input
                   type="checkbox"
@@ -2813,7 +2861,7 @@ function renderEditableSheet(root, sheet) {
                 </div>
               </div>
             `;
-          }).join("")}
+      }).join("")}
         </div>
 
         <!-- ARMAS & COMBATE -->
@@ -2836,9 +2884,9 @@ function renderEditableSheet(root, sheet) {
               </thead>
               <tbody>
                 ${(sheet.weapons || [])
-                  .map((w) => {
-                    const wf = calcFractions(w.regular_value || 25);
-                    return `
+        .map((w) => {
+          const wf = calcFractions(w.regular_value || 25);
+          return `
                     <tr style="border-bottom:1px solid var(--border-subtle);">
                       <td style="padding:0.4rem;">
                         <button type="button" class="btn btn-sm" data-roll-d100-label="Ataque: ${escapeHtml(w.name)}" data-roll-d100-val="${wf.total}" style="padding:0.15rem 0.45rem;">
@@ -2855,8 +2903,8 @@ function renderEditableSheet(root, sheet) {
                       <td style="padding:0.4rem;">${escapeHtml(w.malfunction)}</td>
                     </tr>
                   `;
-                  })
-                  .join("")}
+        })
+        .join("")}
               </tbody>
             </table>
           </div>
@@ -2889,31 +2937,29 @@ function renderEditableSheet(root, sheet) {
         </div>
       </div>
     `
-        : `
+      : `
       <!-- ================= VERSO DA FICHA EDITÁVEL ================= -->
       <div class="ornate-panel">
         <div class="section-banner">ANTECEDENTES & PERSONALIDADE DO INVESTIGADOR</div>
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:1rem; margin-bottom:1.25rem;">
           ${BACKSTORY_CATEGORIES.map((cat) => {
-            const entry = sheet.backstory?.[cat.id] || { entry_text: "", is_key_connection: false };
-            return `
-              <div style="background:var(--bg-elevated); border:1px solid ${
-                entry.is_key_connection ? "var(--status-luck)" : "var(--border-ornate)"
-              }; padding:0.8rem; border-radius:4px;">
+        const entry = sheet.backstory?.[cat.id] || { entry_text: "", is_key_connection: false };
+        return `
+              <div style="background:var(--bg-elevated); border:1px solid ${entry.is_key_connection ? "var(--status-luck)" : "var(--border-ornate)"
+          }; padding:0.8rem; border-radius:4px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
                   <strong style="font-family:var(--font-display); font-size:0.85rem;">${cat.title}</strong>
-                  ${
-                    entry.is_key_connection
-                      ? `<span class="char-formula-badge" style="color:var(--status-luck);"><i class="fa-solid fa-star"></i> Conexão-Chave</span>`
-                      : ""
-                  }
+                  ${entry.is_key_connection
+            ? `<span class="char-formula-badge" style="color:var(--status-luck);"><i class="fa-solid fa-star"></i> Conexão-Chave</span>`
+            : ""
+          }
                 </div>
                 <textarea rows="2" data-sheet-backstory="${cat.id}" placeholder="${escapeHtml(cat.placeholder)}">${escapeHtml(
-              entry.entry_text
-            )}</textarea>
+            entry.entry_text
+          )}</textarea>
               </div>
             `;
-          }).join("")}
+      }).join("")}
         </div>
 
         <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:1rem;">
@@ -3002,6 +3048,26 @@ function renderEditableSheet(root, sheet) {
         sheet.derived.mp = Math.max(0, Math.min(sheet.derived.max_mp, (sheet.derived.mp || 0) + delta));
       } else if (stat === "luck") {
         sheet.characteristics.luck = Math.max(0, Math.min(99, (sheet.characteristics.luck || 0) + delta));
+      }
+      await updateLiveInvestigatorStatus(sheet);
+      render();
+    });
+  });
+
+  // Edição direta digitando ou nas setinhas de PV, Sanidade, Sorte e PM na ficha
+  root.querySelectorAll("[data-sheet-stat-input]").forEach((inp) => {
+    inp.addEventListener("change", async () => {
+      const stat = inp.getAttribute("data-sheet-stat-input");
+      const newVal = Number(inp.value);
+      if (Number.isNaN(newVal)) return;
+      if (stat === "hp") {
+        sheet.derived.hp = Math.max(0, Math.min(sheet.derived.max_hp, newVal));
+      } else if (stat === "sanity") {
+        sheet.derived.sanity = Math.max(0, Math.min(sheet.derived.max_sanity, newVal));
+      } else if (stat === "mp") {
+        sheet.derived.mp = Math.max(0, Math.min(sheet.derived.max_mp, newVal));
+      } else if (stat === "luck") {
+        sheet.characteristics.luck = Math.max(0, Math.min(99, newVal));
       }
       await updateLiveInvestigatorStatus(sheet);
       render();
