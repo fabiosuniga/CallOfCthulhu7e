@@ -4,6 +4,7 @@
    ============================================================================ */
 
 :root {
+  color-scheme: dark;
   --bg-abyss: #050507;
   --bg-surface: #0e0e12;
   --bg-elevated: #16161d;
@@ -207,6 +208,135 @@ textarea:focus {
   outline: none;
   border-color: var(--crimson-primary);
   box-shadow: 0 0 0 2px rgba(220, 20, 30, 0.2);
+}
+
+/* Estilização das setinhas de input[type="number"] (Fundo escuro + Setas vermelhas) */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  opacity: 1;
+  width: 18px;
+  height: 24px;
+  cursor: pointer;
+  background-color: #16161d;
+  border-left: 1px solid var(--border-ornate);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='22' viewBox='0 0 14 22'%3E%3Cpath d='M7 3L11.5 8.5H2.5L7 3Z' fill='%23dc141e'/%3E%3Cpath d='M7 19L2.5 13.5H11.5L7 19Z' fill='%23dc141e'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  border-radius: 0 2px 2px 0;
+}
+
+input[type="number"]::-webkit-inner-spin-button:hover {
+  background-color: #261015;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='22' viewBox='0 0 14 22'%3E%3Cpath d='M7 3L11.5 8.5H2.5L7 3Z' fill='%23f42530'/%3E%3Cpath d='M7 19L2.5 13.5H11.5L7 19Z' fill='%23f42530'/%3E%3C/svg%3E");
+}
+
+/* Checkboxes e Radios no tema: Fundo escuro + Contorno vermelho (e totalmente vermelho quando marcado) */
+input[type="checkbox"],
+input[type="radio"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background-color: var(--bg-input);
+  border: 1.5px solid var(--crimson-primary);
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  margin: 0;
+  transition: all 0.15s ease;
+}
+
+input[type="radio"] {
+  border-radius: 50%;
+}
+
+input[type="checkbox"]:hover,
+input[type="radio"]:hover {
+  border-color: var(--crimson-bright);
+  background-color: #1d1014;
+  box-shadow: 0 0 6px rgba(220, 20, 30, 0.35);
+}
+
+input[type="checkbox"]:checked {
+  background-color: var(--crimson-primary);
+  border-color: var(--crimson-bright);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' d='M2.5 7.2L5.6 10.3L11.5 3.8'/%3E%3C/svg%3E");
+  background-size: 12px 12px;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+input[type="radio"]:checked {
+  background-color: var(--crimson-primary);
+  border-color: var(--crimson-bright);
+  box-shadow: inset 0 0 0 3px var(--bg-input);
+}
+
+/* Inputs compactos para edição direta de PV, SAN, Sorte e PM */
+.live-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.live-stat-input {
+  width: 58px !important;
+  padding: 0.15rem 0.25rem !important;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  font-weight: 700;
+  background: var(--bg-input);
+  border: 1px solid var(--border-ornate);
+  border-radius: 3px;
+}
+
+.presence-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.85rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
+}
+
+.presence-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.presence-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.presence-dot.online {
+  background: var(--status-success);
+  box-shadow: 0 0 8px var(--status-success);
+}
+
+.presence-dot.offline {
+  background: var(--text-muted);
 }
 
 label {
