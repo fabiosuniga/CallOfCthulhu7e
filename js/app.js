@@ -1071,52 +1071,36 @@ function renderCampaignRoom(root) {
                       <div class="inv-stat-pills" style="margin-top:0.75rem;">
                         <!-- PV -->
                         <div class="stat-pill">
-                          <div class="lbl">PV (Máx ${d.max_hp})</div>
+                          <div class="lbl">PV / ${d.max_hp}</div>
                           ${canControl
-              ? `<div class="live-stat-row">
-                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:hp:-1">−</button>
-                                  <input type="number" class="live-stat-input" style="color:var(--status-hp);" min="0" max="${d.max_hp}" value="${d.hp}" data-room-stat-input="${inv.id}:hp" />
-                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:hp:1">+</button>
-                                </div>`
+              ? `<input type="number" class="live-stat-input" style="color:var(--status-hp);" min="0" max="${d.max_hp}" value="${d.hp}" data-room-stat-input="${inv.id}:hp" title="Digite ou use as setas para alterar PV" />`
               : `<div class="val" style="color:var(--status-hp);">${d.hp}/${d.max_hp}</div>`
             }
                         </div>
 
                         <!-- SAN -->
                         <div class="stat-pill">
-                          <div class="lbl">SAN (Máx ${d.max_sanity})</div>
+                          <div class="lbl">SAN / ${d.max_sanity}</div>
                           ${canControl
-              ? `<div class="live-stat-row">
-                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:sanity:-1">−</button>
-                                  <input type="number" class="live-stat-input" style="color:var(--status-san);" min="0" max="${d.max_sanity}" value="${d.sanity}" data-room-stat-input="${inv.id}:sanity" />
-                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:sanity:1">+</button>
-                                </div>`
+              ? `<input type="number" class="live-stat-input" style="color:var(--status-san);" min="0" max="${d.max_sanity}" value="${d.sanity}" data-room-stat-input="${inv.id}:sanity" title="Digite ou use as setas para alterar Sanidade" />`
               : `<div class="val" style="color:var(--status-san);">${d.sanity}/${d.max_sanity}</div>`
             }
                         </div>
 
                         <!-- SORTE -->
                         <div class="stat-pill">
-                          <div class="lbl">Sorte (%)</div>
+                          <div class="lbl">Sorte %</div>
                           ${canControl
-              ? `<div class="live-stat-row">
-                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:luck:-1">−</button>
-                                  <input type="number" class="live-stat-input" style="color:var(--status-luck);" min="0" max="99" value="${c.luck}" data-room-stat-input="${inv.id}:luck" />
-                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:luck:1">+</button>
-                                </div>`
+              ? `<input type="number" class="live-stat-input" style="color:var(--status-luck);" min="0" max="99" value="${c.luck}" data-room-stat-input="${inv.id}:luck" title="Digite ou use as setas para alterar Sorte" />`
               : `<div class="val" style="color:var(--status-luck);">${c.luck}%</div>`
             }
                         </div>
 
                         <!-- PM -->
                         <div class="stat-pill">
-                          <div class="lbl">PM (Máx ${d.max_mp})</div>
+                          <div class="lbl">PM / ${d.max_mp}</div>
                           ${canControl
-              ? `<div class="live-stat-row">
-                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:mp:-1">−</button>
-                                  <input type="number" class="live-stat-input" style="color:var(--status-mp);" min="0" max="${d.max_mp}" value="${d.mp}" data-room-stat-input="${inv.id}:mp" />
-                                  <button type="button" class="btn btn-sm" style="padding:0.05rem 0.35rem;" data-room-stat="${inv.id}:mp:1">+</button>
-                                </div>`
+              ? `<input type="number" class="live-stat-input" style="color:var(--status-mp);" min="0" max="${d.max_mp}" value="${d.mp}" data-room-stat-input="${inv.id}:mp" title="Digite ou use as setas para alterar PM" />`
               : `<div class="val" style="color:var(--status-mp);">${d.mp}/${d.max_mp}</div>`
             }
                         </div>
@@ -1206,8 +1190,8 @@ function renderCampaignRoom(root) {
       <aside class="chat-panel">
         <div class="section-banner" style="margin-bottom:0; display:flex; justify-content:space-between; align-items:center; padding:0.45rem 0.85rem;">
           <span><i class="fa-solid fa-comments"></i> Chat & Rolagens Ao Vivo</span>
-          ${messages.length > 0
-      ? `<button type="button" class="btn btn-sm btn-danger" id="btnClearCampaignChat" style="padding:0.18rem 0.55rem; font-size:0.7rem;" title="Limpar todo o histórico de conversa da mesa">
+          ${isKeeper && messages.length > 0
+      ? `<button type="button" class="btn btn-sm btn-danger" id="btnClearCampaignChat" style="padding:0.18rem 0.55rem; font-size:0.7rem;" title="Limpar todo o histórico de conversa da mesa (Exclusivo do Guardião)">
                 <i class="fa-solid fa-broom"></i> Limpar Histórico
               </button>`
       : ""
