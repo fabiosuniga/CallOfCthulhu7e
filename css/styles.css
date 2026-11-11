@@ -287,8 +287,12 @@ input[type="radio"]:checked {
 }
 
 .live-stat-input {
-  width: 58px !important;
-  padding: 0.15rem 0.25rem !important;
+  width: 100% !important;
+  max-width: 62px;
+  min-width: 0;
+  margin: 0.2rem auto 0;
+  display: block;
+  padding: 0.15rem 0.2rem !important;
   text-align: center;
   font-family: var(--font-mono);
   font-size: 0.92rem;
@@ -296,6 +300,10 @@ input[type="radio"]:checked {
   background: var(--bg-input);
   border: 1px solid var(--border-ornate);
   border-radius: 3px;
+}
+
+.stat-pill {
+  min-width: 0;
 }
 
 .presence-bar {
