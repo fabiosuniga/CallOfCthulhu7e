@@ -537,6 +537,7 @@ export async function getCampaignRoomData(campaignId) {
         investigator_derived (*),
         investigator_finances (*),
         investigator_skills (*),
+        investigator_backstory (*),
         investigator_weapons (*)
       `)
       .in("id", invIds);

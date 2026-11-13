@@ -59,6 +59,9 @@ const state = {
   activeCampaignRoom: null, // { campaign, members, messages }
   onlineUsers: {}, // { [user_id]: { user_id, name, online_at } }
   keeperSecretMode: true, // Guardião rola escondido por padrão
+  roomViewMode: "cards", // 'cards' | 'table' (Escudo do Guardião)
+  roomInspectInvestigatorId: null, // ID do investigador sendo inspecionado no modal da mesa
+  roomInspectTab: "front", // 'front' | 'skills' | 'back'
   currentUser: null,
   draft: null,
   activeSheet: null,
@@ -893,6 +896,308 @@ function renderCampaignRoom(root) {
   const myMember = members.find((m) => m.user_id === state.currentUser.id);
   const myInv = myMember?.investigator || null;
   const onlineList = Object.values(state.onlineUsers || {});
+  const investigatorsInRoom = members.map((m) => m.investigator).filter(Boolean);
+  const unlinkedMembers = members.filter((m) => !m.investigator);
+
+  const getInvSkillTotal = (inv, skillId) => {
+    const sk = SKILLS_CATALOG.find((s) => s.id === skillId);
+    if (!sk) return 0;
+    const entry = inv.skills?.[skillId] || {
+      base_value: getSkillBaseValue(sk, inv.characteristics || {}),
+      occupation_points: 0,
+      personal_points: 0,
+      experience_points: 0
+    };
+    return Math.min(
+      99,
+      (entry.base_value || 0) +
+      (entry.occupation_points || 0) +
+      (entry.personal_points || 0) +
+      (entry.experience_points || 0)
+    );
+  };
+
+  const keySkillCatalog = [
+    { id: "spot_hidden", name: "Encontrar" },
+    { id: "listen", name: "Escutar" },
+    { id: "psychology", name: "Psicologia" },
+    { id: "stealth", name: "Furtividade" },
+    { id: "dodge", name: "Esquiva" },
+    { id: "fighting_brawl", name: "Brigar" },
+    { id: "firearms_handgun", name: "Pistolas" },
+    { id: "first_aid", name: "1º Socorros" }
+  ];
+
+  let modalHtml = "";
+  if (state.roomInspectInvestigatorId) {
+    const inspectInv = investigatorsInRoom.find((i) => i.id === state.roomInspectInvestigatorId) || investigatorsInRoom[0];
+    if (inspectInv) {
+      const idx = investigatorsInRoom.findIndex((i) => i.id === inspectInv.id);
+      const prevInv = idx > 0 ? investigatorsInRoom[idx - 1] : investigatorsInRoom[investigatorsInRoom.length - 1];
+      const nextInv = idx < investigatorsInRoom.length - 1 ? investigatorsInRoom[idx + 1] : investigatorsInRoom[0];
+      const c = inspectInv.characteristics || {};
+      const d = inspectInv.derived || {};
+      const f = inspectInv.finances || {};
+      const occ = OCCUPATIONS_CATALOG.find((o) => o.id === inspectInv.occupation_id);
+      const occName = inspectInv.custom_occupation_name || occ?.name || "Investigador";
+      const dodgeTotal = getInvSkillTotal(inspectInv, "dodge");
+
+      modalHtml = `
+        <div class="keeper-modal-overlay" id="roomInspectOverlay">
+          <div class="keeper-modal-content" role="dialog" aria-modal="true">
+            <!-- CABEÇALHO DO MODAL -->
+            <div class="keeper-modal-header">
+              <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+                <span style="font-family:var(--font-display); font-size:1.05rem; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:0.4rem;">
+                  <i class="fa-solid fa-scroll" style="color:var(--crimson-bright);"></i>
+                  ${escapeHtml(inspectInv.name)}
+                </span>
+                <span style="font-size:0.75rem; color:var(--text-secondary);">
+                  (${escapeHtml(occName)} • Jogador: <strong>${escapeHtml(inspectInv.player_name || "—")}</strong>)
+                </span>
+              </div>
+
+              <!-- SELETOR DE NAVEGAÇÃO ENTRE INVESTIGADORES DA MESA -->
+              <div style="display:flex; align-items:center; gap:0.35rem; flex-wrap:wrap;">
+                ${investigatorsInRoom.length > 1 ? `
+                  <button type="button" class="btn btn-sm" id="btnModalInspectPrev" title="Investigador Anterior (${escapeHtml(prevInv.name)})">
+                    <i class="fa-solid fa-chevron-left"></i>
+                  </button>
+                  <select id="selectModalInspectInv" style="width:auto; padding:0.25rem 0.55rem; font-size:0.78rem; font-weight:600; border-color:var(--crimson-primary);">
+                    ${investigatorsInRoom.map((inv) => `
+                      <option value="${inv.id}" ${inv.id === inspectInv.id ? "selected" : ""}>
+                        ${escapeHtml(inv.name)} (${escapeHtml(inv.player_name || "Jogador")})
+                      </option>
+                    `).join("")}
+                  </select>
+                  <button type="button" class="btn btn-sm" id="btnModalInspectNext" title="Próximo Investigador (${escapeHtml(nextInv.name)})">
+                    <i class="fa-solid fa-chevron-right"></i>
+                  </button>
+                ` : ""}
+                <button type="button" class="btn btn-sm" id="btnCloseModalInspectX" style="padding:0.25rem 0.55rem;" aria-label="Fechar">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- ABAS DO MODAL -->
+            <div style="display:flex; gap:0.5rem; padding:0.6rem 1.25rem; background:rgba(0,0,0,0.3); border-bottom:1px solid var(--border-subtle); flex-wrap:wrap;">
+              <button type="button" class="btn btn-sm ${state.roomInspectTab === "front" ? "btn-primary" : ""}" id="btnModalTabFront">
+                <i class="fa-solid fa-id-card"></i> Características & Combate
+              </button>
+              <button type="button" class="btn btn-sm ${state.roomInspectTab === "skills" ? "btn-primary" : ""}" id="btnModalTabSkills">
+                <i class="fa-solid fa-list-check"></i> Todas as Perícias (46)
+              </button>
+              <button type="button" class="btn btn-sm ${state.roomInspectTab === "back" ? "btn-primary" : ""}" id="btnModalTabBack">
+                <i class="fa-solid fa-book-open"></i> Antecedentes, Finanças & Pertences
+              </button>
+            </div>
+
+            <!-- CORPO DO MODAL -->
+            <div class="keeper-modal-body">
+              ${state.roomInspectTab === "front" ? `
+                <div style="display:grid; grid-template-columns:1fr 1.6fr; gap:1rem; align-items:start; margin-bottom:1rem;">
+                  <!-- DADOS PESSOAIS -->
+                  <div style="background:var(--bg-elevated); padding:0.85rem; border:1px solid var(--border-subtle); border-radius:4px;">
+                    <div class="section-banner" style="font-size:0.78rem; margin-bottom:0.6rem;">DADOS PESSOAIS</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.4rem; font-size:0.82rem;">
+                      <div style="grid-column:span 2;"><strong>Nome:</strong> ${escapeHtml(inspectInv.name)}</div>
+                      <div style="grid-column:span 2;"><strong>Ocupação:</strong> <span style="color:var(--crimson-bright); font-weight:700;">${escapeHtml(occName)}</span></div>
+                      <div><strong>Idade:</strong> ${inspectInv.age || 25} anos</div>
+                      <div><strong>Sexo:</strong> ${escapeHtml(inspectInv.gender || "—")}</div>
+                      <div><strong>Residência:</strong> ${escapeHtml(inspectInv.residence || "—")}</div>
+                      <div><strong>Nascimento:</strong> ${escapeHtml(inspectInv.birthplace || "—")}</div>
+                      <div style="grid-column:span 2;"><strong>Era:</strong> ${inspectInv.era === "modern" ? "Moderna" : "Anos 1920"}</div>
+                    </div>
+
+                    <!-- DERIVADOS DE COMBATE -->
+                    <div style="margin-top:0.75rem; padding-top:0.65rem; border-top:1px dashed var(--border-subtle); display:grid; grid-template-columns:repeat(4, 1fr); gap:0.4rem; text-align:center;">
+                      <div style="background:var(--bg-surface); padding:0.3rem; border-radius:3px;">
+                        <div style="font-size:0.65rem; color:var(--text-secondary);">MOV</div>
+                        <div style="font-family:var(--font-mono); font-size:1rem; font-weight:700;">${d.mov ?? 8}</div>
+                      </div>
+                      <div style="background:var(--bg-surface); padding:0.3rem; border-radius:3px;">
+                        <div style="font-size:0.65rem; color:var(--text-secondary);">DANO EXTRA</div>
+                        <div style="font-family:var(--font-mono); font-size:1rem; font-weight:700;">${escapeHtml(d.damage_bonus || "0")}</div>
+                      </div>
+                      <div style="background:var(--bg-surface); padding:0.3rem; border-radius:3px;">
+                        <div style="font-size:0.65rem; color:var(--text-secondary);">CORPO</div>
+                        <div style="font-family:var(--font-mono); font-size:1rem; font-weight:700;">${d.build ?? 0}</div>
+                      </div>
+                      <div style="background:var(--bg-surface); padding:0.3rem; border-radius:3px; cursor:pointer;" class="clickable-cell" data-room-roll-skill="${inspectInv.id}:dodge" data-skill-label="Esquiva" data-skill-target="${dodgeTotal}" data-inv-name="${escapeHtml(inspectInv.name)}" title="Clique para rolar Esquiva">
+                        <div style="font-size:0.65rem; color:var(--text-secondary);">ESQUIVA</div>
+                        <div style="font-family:var(--font-mono); font-size:1rem; font-weight:700; color:var(--crimson-bright);">${dodgeTotal}%</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- CARACTERÍSTICAS PRIMÁRIAS -->
+                  <div style="background:var(--bg-elevated); padding:0.85rem; border:1px solid var(--border-subtle); border-radius:4px;">
+                    <div class="section-banner" style="font-size:0.78rem; margin-bottom:0.6rem;">CARACTERÍSTICAS (CLIQUE PARA TESTAR 1D100)</div>
+                    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:0.5rem;">
+                      ${PRIMARY_CHARACTERISTICS.map((attr) => {
+                        const val = c[attr.key] || 0;
+                        const f = calcFractions(val);
+                        return `
+                          <div class="char-box-card clickable-cell" data-room-roll-attr="${inspectInv.id}:${attr.key}" data-attr-label="${attr.sigla} (${attr.name})" data-attr-target="${val}" data-inv-name="${escapeHtml(inspectInv.name)}" style="padding:0.45rem; text-align:center; cursor:pointer;" title="${attr.name} (${val}%) - Clique para rolar">
+                            <div class="sigla" style="font-size:0.75rem;">${attr.sigla}</div>
+                            <div class="main-val" style="font-size:1.15rem; margin:0.15rem 0;">${val}</div>
+                            <div class="fracs" style="font-size:0.68rem;">${f.half} | ${f.fifth}</div>
+                          </div>
+                        `;
+                      }).join("")}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- STATUS VITAIS -->
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:0.75rem; margin-bottom:1rem;">
+                  <div class="track-card hp" style="padding:0.75rem;">
+                    <div class="title" style="font-size:0.8rem;"><i class="fa-solid fa-heart-pulse"></i> Pontos de Vida</div>
+                    <div class="score-display" style="font-size:1.4rem;">${d.hp} <span class="max-sub">/ ${d.max_hp}</span></div>
+                  </div>
+                  <div class="track-card san" style="padding:0.75rem;">
+                    <div class="title" style="font-size:0.8rem;"><i class="fa-solid fa-brain"></i> Sanidade</div>
+                    <div class="score-display" style="font-size:1.4rem;">${d.sanity} <span class="max-sub">/ ${d.max_sanity}</span></div>
+                  </div>
+                  <div class="track-card luck" style="padding:0.75rem; cursor:pointer;" class="clickable-cell" data-room-roll-attr="${inspectInv.id}:luck" data-attr-label="Sorte" data-attr-target="${c.luck || 50}" data-inv-name="${escapeHtml(inspectInv.name)}" title="Clique para rolar teste de Sorte">
+                    <div class="title" style="font-size:0.8rem;"><i class="fa-solid fa-clover"></i> Sorte %</div>
+                    <div class="score-display" style="font-size:1.4rem;">${c.luck}%</div>
+                  </div>
+                  <div class="track-card mp" style="padding:0.75rem;">
+                    <div class="title" style="font-size:0.8rem;"><i class="fa-solid fa-wand-magic-sparkles"></i> Pontos de Magia</div>
+                    <div class="score-display" style="font-size:1.4rem;">${d.mp} <span class="max-sub">/ ${d.max_mp}</span></div>
+                  </div>
+                </div>
+
+                <!-- ARMAS & COMBATE -->
+                <div style="background:var(--bg-elevated); padding:0.85rem; border:1px solid var(--border-subtle); border-radius:4px;">
+                  <div class="section-banner" style="font-size:0.78rem; margin-bottom:0.6rem;">ARMAS & COMBATE</div>
+                  ${(inspectInv.weapons || []).length === 0 ? `
+                    <p style="font-size:0.8rem; color:var(--text-muted);">Nenhuma arma registrada.</p>
+                  ` : `
+                    <div style="overflow-x:auto;">
+                      <table class="keeper-table">
+                        <thead>
+                          <tr>
+                            <th>Arma</th>
+                            <th>Perícia / Habilidade</th>
+                            <th>Dano</th>
+                            <th>Alcance</th>
+                            <th>Ataques</th>
+                            <th>Munição</th>
+                            <th>Defeito</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${(inspectInv.weapons || []).map((w) => `
+                            <tr>
+                              <td><strong>${escapeHtml(w.name || "Desarmado")}</strong></td>
+                              <td><span class="num">${w.regular_value || 25}%</span></td>
+                              <td><span class="num" style="color:var(--status-hp);">${escapeHtml(w.damage || "1D3")}</span></td>
+                              <td>${escapeHtml(w.range || "Toque")}</td>
+                              <td>${escapeHtml(w.attacks_per_round || "1")}</td>
+                              <td>${escapeHtml(w.ammo || "—")}</td>
+                              <td>${escapeHtml(w.malfunction || "—")}</td>
+                            </tr>
+                          `).join("")}
+                        </tbody>
+                      </table>
+                    </div>
+                  `}
+                </div>
+              ` : state.roomInspectTab === "skills" ? `
+                <div style="margin-bottom:0.65rem; font-size:0.8rem; color:var(--text-secondary); display:flex; justify-content:space-between; align-items:center;">
+                  <span><i class="fa-solid fa-dice-d20" style="color:var(--crimson-bright);"></i> Clique em qualquer perícia para disparar um teste 1D100 na mesa.</span>
+                  <span style="font-size:0.74rem; color:var(--text-muted);">Formato: Regular | Metade | 1/5</span>
+                </div>
+                <div class="skills-sheet-grid" style="grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:0.45rem;">
+                  ${SKILLS_CATALOG.map((sk) => {
+                    const tot = getInvSkillTotal(inspectInv, sk.id);
+                    const f = calcFractions(tot);
+                    const skEntry = inspectInv.skills?.[sk.id] || {};
+                    const isOccupational = skEntry.is_occupation_skill;
+                    const isChecked = skEntry.checked_for_improvement;
+                    return `
+                      <div class="skill-row clickable-cell" data-room-roll-skill="${inspectInv.id}:${sk.id}" data-skill-label="${sk.name}" data-skill-target="${tot}" data-inv-name="${escapeHtml(inspectInv.name)}" style="cursor:pointer; padding:0.35rem 0.55rem; background:var(--bg-elevated); border:1px solid ${isOccupational ? 'var(--border-ornate)' : 'var(--border-subtle)'};" title="${sk.name}: ${tot}% (1/2: ${f.half}% | 1/5: ${f.fifth}%) - Clique para rolar">
+                        <div style="display:flex; align-items:center; gap:0.35rem; flex:1;">
+                          ${isChecked ? `<i class="fa-solid fa-check" style="color:var(--status-success); font-size:0.7rem;" title="Marcada para Evolução"></i>` : ""}
+                          <span style="font-size:0.82rem; ${isOccupational ? 'color:var(--text-primary); font-weight:600;' : 'color:var(--text-secondary);'}">${sk.name}</span>
+                        </div>
+                        <div class="skill-fractions" style="display:flex; align-items:center; gap:0.25rem;">
+                          <span class="tot-box" style="font-family:var(--font-mono); font-weight:700; font-size:0.88rem; color:${tot > 40 ? 'var(--crimson-bright)' : 'var(--text-primary)'};">${tot}%</span>
+                          <span class="sub-frac" style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-muted);">(${f.half}/${f.fifth})</span>
+                        </div>
+                      </div>
+                    `;
+                  }).join("")}
+                </div>
+              ` : `
+                <div style="display:grid; grid-template-columns:1.4fr 1fr; gap:1rem; align-items:start;">
+                  <!-- ANTECEDENTES (10 CATEGORIAS) -->
+                  <div>
+                    <div class="section-banner" style="font-size:0.78rem; margin-bottom:0.6rem;">ANTECEDENTES DO INVESTIGADOR</div>
+                    <div style="display:flex; flex-direction:column; gap:0.65rem;">
+                      ${BACKSTORY_CATEGORIES.map((cat) => {
+                        const entry = inspectInv.backstory?.[cat.id] || {};
+                        const txt = entry.entry_text?.trim() || "";
+                        const isKey = entry.is_key_connection;
+                        return `
+                          <div style="background:var(--bg-elevated); border:1px solid ${isKey ? 'var(--crimson-primary)' : 'var(--border-subtle)'}; padding:0.65rem; border-radius:4px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
+                              <span style="font-size:0.78rem; font-family:var(--font-display); font-weight:700; color:${isKey ? 'var(--crimson-bright)' : 'var(--text-primary)'};">
+                                ${cat.number}. ${cat.title}
+                              </span>
+                              ${isKey ? `<span class="char-formula-badge" style="background:rgba(220,20,30,0.15); border:1px solid var(--crimson-primary); font-size:0.65rem;"><i class="fa-solid fa-key"></i> Conexão-Chave</span>` : ""}
+                            </div>
+                            <p style="font-size:0.82rem; color:${txt ? 'var(--text-secondary)' : 'var(--text-muted)'}; line-height:1.4; white-space:pre-wrap;">${txt ? escapeHtml(txt) : "<em>Nenhum registro.</em>"}</p>
+                          </div>
+                        `;
+                      }).join("")}
+                    </div>
+                  </div>
+
+                  <!-- FINANÇAS & EQUIPAMENTOS -->
+                  <div style="display:flex; flex-direction:column; gap:0.85rem;">
+                    <div style="background:var(--bg-elevated); padding:0.85rem; border:1px solid var(--border-subtle); border-radius:4px;">
+                      <div class="section-banner" style="font-size:0.78rem; margin-bottom:0.6rem;">FINANÇAS & PODER DE COMPRA</div>
+                      <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.4rem;">
+                        <div><strong>Nível de Crédito:</strong> <span class="num" style="color:var(--status-luck);">${f.credit_rating ?? 0}%</span></div>
+                        <div><strong>Classe Econômica:</strong> <span style="color:var(--text-primary); font-weight:600;">${escapeHtml(f.economic_class || "—")}</span></div>
+                        <div><strong>Dinheiro em Mãos:</strong> <span class="num">${escapeHtml(f.cash || "$0")}</span></div>
+                        <div><strong>Bens / Patrimônio:</strong> <span class="num">${escapeHtml(f.assets || "$0")}</span></div>
+                        <div><strong>Limite de Gastos:</strong> <span class="num">${escapeHtml(f.spending_level || "$0")}</span></div>
+                      </div>
+                    </div>
+
+                    <div style="background:var(--bg-elevated); padding:0.85rem; border:1px solid var(--border-subtle); border-radius:4px;">
+                      <div class="section-banner" style="font-size:0.78rem; margin-bottom:0.6rem;">EQUIPAMENTOS & PERTENCES</div>
+                      <p style="font-size:0.82rem; color:var(--text-secondary); line-height:1.4; white-space:pre-wrap;">${escapeHtml(inspectInv.personal_equipment || "Nenhum equipamento registrado.")}</p>
+                    </div>
+                  </div>
+                </div>
+              `}
+            </div>
+
+            <!-- RODAPÉ DO MODAL -->
+            <div class="keeper-modal-footer">
+              <div style="font-size:0.76rem; color:var(--text-secondary);">
+                <i class="fa-solid fa-circle-info"></i> As rolagens feitas aqui utilizam a configuração da mesa (pública ou secreta).
+              </div>
+              <div style="display:flex; gap:0.5rem;">
+                <button type="button" class="btn btn-sm" id="btnOpenInFullEditor">
+                  <i class="fa-solid fa-up-right-from-square"></i> Abrir no Editor Completo
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnCloseModalInspect">
+                  <i class="fa-solid fa-check"></i> Concluir / Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
 
   root.innerHTML = `
     <!-- CABEÇALHO DA SALA AO VIVO -->
@@ -1014,40 +1319,147 @@ function renderCampaignRoom(root) {
 
         <!-- MONITORAMENTO AO VIVO DOS INVESTIGADORES DA MESA -->
         <section class="ornate-panel">
-          <div class="section-banner">Status Ao Vivo dos Investigadores na Mesa (${members.filter((m) => m.investigator).length})</div>
+          <div class="section-banner" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <i class="fa-solid fa-users-viewfinder" style="color:var(--crimson-bright);"></i>
+              <span>Investigadores na Mesa (${investigatorsInRoom.length})</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+              <button type="button" class="btn btn-sm ${state.roomViewMode === "cards" ? "btn-primary" : ""}" id="btnRoomViewCards" title="Exibir cards individuais com atributos">
+                <i class="fa-solid fa-grip"></i> Cards
+              </button>
+              <button type="button" class="btn btn-sm ${state.roomViewMode === "table" ? "btn-primary" : ""}" id="btnRoomViewTable" title="Exibir tabela comparativa (Escudo do Guardião)">
+                <i class="fa-solid fa-table-list"></i> Escudo do Guardião
+              </button>
+              ${investigatorsInRoom.length > 0 ? `
+                <button type="button" class="btn btn-sm btn-outline-crimson" id="btnOpenRoomAllSheets" title="Visualizar todas as fichas completas cadastradas na mesa atual">
+                  <i class="fa-solid fa-scroll"></i> Ver Todas as Fichas (${investigatorsInRoom.length})
+                </button>
+              ` : ""}
+            </div>
+          </div>
 
-          ${members.filter((m) => m.investigator).length === 0
+          ${unlinkedMembers.length > 0 ? `
+            <div style="margin-bottom:0.75rem; padding:0.45rem 0.75rem; background:rgba(245,158,11,0.08); border:1px dashed var(--status-luck); border-radius:4px; font-size:0.76rem; color:var(--status-luck);">
+              <i class="fa-solid fa-circle-info"></i> Membro(s) conectado(s) aguardando vincular personagem: <strong>${unlinkedMembers.map((m) => escapeHtml(m.user_id === state.currentUser.id ? "Você" : (state.onlineUsers[m.user_id]?.name || "Jogador"))).join(", ")}</strong>.
+            </div>
+          ` : ""}
+
+          ${investigatorsInRoom.length === 0
       ? `
-            <div style="text-align:center; padding:1.75rem 1rem; color:var(--text-secondary); font-size:0.88rem;">
-              Nenhum investigador vinculado à mesa ainda. Compartilhe o código <strong>${escapeHtml(
-        campaign.invite_code
-      )}</strong> com os jogadores ou selecione um personagem no topo!
+            <div style="text-align:center; padding:1.85rem 1rem; color:var(--text-secondary); font-size:0.88rem;">
+              <i class="fa-solid fa-user-secret" style="font-size:2rem; color:var(--text-muted); margin-bottom:0.5rem; display:block;"></i>
+              Nenhum investigador vinculado à mesa ainda.<br />
+              Compartilhe o código <strong style="color:var(--status-luck);">${escapeHtml(campaign.invite_code)}</strong> com os jogadores ou selecione um personagem seu no topo!
             </div>
           `
-      : `
-            <div class="investigators-grid" style="grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));">
-              ${members
-        .filter((m) => m.investigator)
-        .map((m) => {
-          const inv = m.investigator;
-          const d = inv.derived || {};
-          const c = inv.characteristics || {};
-          const occ = OCCUPATIONS_CATALOG.find((o) => o.id === inv.occupation_id);
-          const occName = inv.custom_occupation_name || occ?.name || "Investigador";
-          const canControl = m.user_id === state.currentUser.id || isKeeper;
-          const isUserOnline = Boolean(state.onlineUsers?.[m.user_id]);
+      : state.roomViewMode === "table"
+        ? `
+            <!-- VISÃO: TABELA DO ESCUDO DO GUARDIÃO (TODOS OS INVESTIGADORES LADO A LADO) -->
+            <div class="keeper-table-wrapper">
+              <table class="keeper-table">
+                <thead>
+                  <tr>
+                    <th>Investigador / Jogador</th>
+                    <th>PV</th>
+                    <th>SAN</th>
+                    <th>Sorte</th>
+                    <th>PM</th>
+                    ${PRIMARY_CHARACTERISTICS.map((a) => `<th title="${a.name}">${a.sigla}</th>`).join("")}
+                    <th>MOV</th>
+                    <th>BD</th>
+                    <th>Corpo</th>
+                    <th>Esquiva</th>
+                    <th>Encontrar</th>
+                    <th>Escutar</th>
+                    <th>Psicol.</th>
+                    <th>Furtiv.</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${investigatorsInRoom.map((inv) => {
+                    const d = inv.derived || {};
+                    const c = inv.characteristics || {};
+                    const occ = OCCUPATIONS_CATALOG.find((o) => o.id === inv.occupation_id);
+                    const occName = inv.custom_occupation_name || occ?.name || "Investigador";
+                    const m = members.find((mem) => mem.investigator?.id === inv.id);
+                    const isOnline = Boolean(state.onlineUsers?.[m?.user_id]);
+                    const canControl = m?.user_id === state.currentUser.id || isKeeper;
+                    const dodgeTot = getInvSkillTotal(inv, "dodge");
+                    const spotTot = getInvSkillTotal(inv, "spot_hidden");
+                    const listenTot = getInvSkillTotal(inv, "listen");
+                    const psychTot = getInvSkillTotal(inv, "psychology");
+                    const stealthTot = getInvSkillTotal(inv, "stealth");
 
-          const activeConditions = [];
-          if (d.major_wound) activeConditions.push("Lesão Grave");
-          if (d.unconscious) activeConditions.push("Inconsciente");
-          if (d.dying) activeConditions.push("Morrendo");
-          if (d.temp_insanity) activeConditions.push("Insan. Temporária");
-          if (d.indef_insanity) activeConditions.push("Insan. Indefinida");
-          if (d.out_of_luck) activeConditions.push("Sem Sorte");
+                    return `
+                      <tr>
+                        <td>
+                          <div style="display:flex; align-items:center; gap:0.4rem;">
+                            <span class="presence-dot ${isOnline ? "online" : "offline"}" title="${isOnline ? "Online" : "Offline"}"></span>
+                            <strong>${escapeHtml(inv.name)}</strong>
+                          </div>
+                          <div style="font-size:0.7rem; color:var(--text-muted);">${escapeHtml(occName)} • ${escapeHtml(inv.player_name || "—")}</div>
+                        </td>
+                        <td><span class="num" style="color:var(--status-hp);">${d.hp}/${d.max_hp}</span></td>
+                        <td><span class="num" style="color:var(--status-san);">${d.sanity}/${d.max_sanity}</span></td>
+                        <td class="${canControl ? "clickable-cell" : ""}" data-room-roll-attr="${inv.id}:luck" data-attr-label="Sorte" data-attr-target="${c.luck || 50}" data-inv-name="${escapeHtml(inv.name)}" title="Sorte: ${c.luck}% - Clique para rolar">
+                          <span class="num" style="color:var(--status-luck);">${c.luck}%</span>
+                        </td>
+                        <td><span class="num" style="color:var(--status-mp);">${d.mp}/${d.max_mp}</span></td>
+                        ${PRIMARY_CHARACTERISTICS.map((a) => {
+                          const val = c[a.key] || 0;
+                          const f = calcFractions(val);
+                          return `
+                            <td class="${canControl ? "clickable-cell" : ""}" data-room-roll-attr="${inv.id}:${a.key}" data-attr-label="${a.sigla} (${a.name})" data-attr-target="${val}" data-inv-name="${escapeHtml(inv.name)}" title="${a.name}: ${val}% (1/2: ${f.half} | 1/5: ${f.fifth})${canControl ? " - Clique para rolar" : ""}">
+                              <span class="num">${val}</span>
+                              <span style="font-size:0.64rem; color:var(--text-muted);">(${f.half})</span>
+                            </td>
+                          `;
+                        }).join("")}
+                        <td><span class="num">${d.mov ?? 8}</span></td>
+                        <td><span class="num">${escapeHtml(d.damage_bonus || "0")}</span></td>
+                        <td><span class="num">${d.build ?? 0}</span></td>
+                        <td class="${canControl ? "clickable-cell" : ""}" data-room-roll-skill="${inv.id}:dodge" data-skill-label="Esquiva" data-skill-target="${dodgeTot}" data-inv-name="${escapeHtml(inv.name)}" title="Esquiva: ${dodgeTot}%${canControl ? " - Clique para rolar" : ""}"><span class="num">${dodgeTot}%</span></td>
+                        <td class="${canControl ? "clickable-cell" : ""}" data-room-roll-skill="${inv.id}:spot_hidden" data-skill-label="Encontrar" data-skill-target="${spotTot}" data-inv-name="${escapeHtml(inv.name)}" title="Encontrar: ${spotTot}%${canControl ? " - Clique para rolar" : ""}"><span class="num">${spotTot}%</span></td>
+                        <td class="${canControl ? "clickable-cell" : ""}" data-room-roll-skill="${inv.id}:listen" data-skill-label="Escutar" data-skill-target="${listenTot}" data-inv-name="${escapeHtml(inv.name)}" title="Escutar: ${listenTot}%${canControl ? " - Clique para rolar" : ""}"><span class="num">${listenTot}%</span></td>
+                        <td class="${canControl ? "clickable-cell" : ""}" data-room-roll-skill="${inv.id}:psychology" data-skill-label="Psicologia" data-skill-target="${psychTot}" data-inv-name="${escapeHtml(inv.name)}" title="Psicologia: ${psychTot}%${canControl ? " - Clique para rolar" : ""}"><span class="num">${psychTot}%</span></td>
+                        <td class="${canControl ? "clickable-cell" : ""}" data-room-roll-skill="${inv.id}:stealth" data-skill-label="Furtividade" data-skill-target="${stealthTot}" data-inv-name="${escapeHtml(inv.name)}" title="Furtividade: ${stealthTot}%${canControl ? " - Clique para rolar" : ""}"><span class="num">${stealthTot}%</span></td>
+                        <td>
+                          <button type="button" class="btn btn-sm" data-room-inspect-inv="${inv.id}" title="Visualizar Ficha Completa">
+                            <i class="fa-solid fa-scroll"></i> Ficha
+                          </button>
+                        </td>
+                      </tr>
+                    `;
+                  }).join("")}
+                </tbody>
+              </table>
+            </div>
+          `
+        : `
+            <!-- VISÃO: CARDS DETALHADOS COM ATRIBUTOS, STATUS E PERÍCIAS -->
+            <div class="investigators-grid" style="grid-template-columns:repeat(auto-fill, minmax(330px, 1fr));">
+              ${investigatorsInRoom.map((inv) => {
+                const d = inv.derived || {};
+                const c = inv.characteristics || {};
+                const occ = OCCUPATIONS_CATALOG.find((o) => o.id === inv.occupation_id);
+                const occName = inv.custom_occupation_name || occ?.name || "Investigador";
+                const m = members.find((mem) => mem.investigator?.id === inv.id);
+                const canControl = m?.user_id === state.currentUser.id || isKeeper;
+                const isUserOnline = Boolean(state.onlineUsers?.[m?.user_id]);
+                const dodgeTot = getInvSkillTotal(inv, "dodge");
 
-          return `
-                  <article class="inv-card" style="border-color:${m.user_id === state.currentUser.id ? "var(--crimson-primary)" : "var(--border-ornate)"
-            };">
+                const activeConditions = [];
+                if (d.major_wound) activeConditions.push("Lesão Grave");
+                if (d.unconscious) activeConditions.push("Inconsciente");
+                if (d.dying) activeConditions.push("Morrendo");
+                if (d.temp_insanity) activeConditions.push("Insan. Temporária");
+                if (d.indef_insanity) activeConditions.push("Insan. Indefinida");
+                if (d.out_of_luck) activeConditions.push("Sem Sorte");
+
+                return `
+                  <article class="inv-card" style="border-color:${m?.user_id === state.currentUser.id ? "var(--crimson-primary)" : "var(--border-ornate)"};">
                     <div>
                       <div class="inv-card-header">
                         <div>
@@ -1058,70 +1470,97 @@ function renderCampaignRoom(root) {
                               ${isUserOnline ? "Online" : "Offline"}
                             </span>
                           </div>
-                          <div class="inv-card-occ">${escapeHtml(occName)} • Jogador: ${escapeHtml(
-              inv.player_name || "Investigador"
-            )}</div>
+                          <div class="inv-card-occ">${escapeHtml(occName)} • Jogador: ${escapeHtml(inv.player_name || "Investigador")}</div>
                         </div>
-                        ${m.user_id === state.currentUser.id || isKeeper
-              ? `<button type="button" class="btn btn-sm" data-room-open-sheet="${inv.id}" title="Abrir Ficha Completa"><i class="fa-solid fa-scroll"></i> Ficha</button>`
-              : ""
-            }
+                        <button type="button" class="btn btn-sm btn-outline-crimson" data-room-inspect-inv="${inv.id}" title="Visualizar Ficha Completa na Mesa">
+                          <i class="fa-solid fa-scroll"></i> Ficha Completa
+                        </button>
                       </div>
 
-                      <div class="inv-stat-pills" style="margin-top:0.75rem;">
-                        <!-- PV -->
+                      <!-- STATUS VITAIS (PV / SAN / SORTE / PM) -->
+                      <div class="inv-stat-pills" style="margin-top:0.65rem;">
                         <div class="stat-pill">
                           <div class="lbl">PV / ${d.max_hp}</div>
                           ${canControl
-              ? `<input type="number" class="live-stat-input" style="color:var(--status-hp);" min="0" max="${d.max_hp}" value="${d.hp}" data-room-stat-input="${inv.id}:hp" title="Digite ou use as setas para alterar PV" />`
-              : `<div class="val" style="color:var(--status-hp);">${d.hp}/${d.max_hp}</div>`
-            }
+                            ? `<input type="number" class="live-stat-input" style="color:var(--status-hp);" min="0" max="${d.max_hp}" value="${d.hp}" data-room-stat-input="${inv.id}:hp" title="Alterar PV" />`
+                            : `<div class="val" style="color:var(--status-hp);">${d.hp}/${d.max_hp}</div>`
+                          }
                         </div>
 
-                        <!-- SAN -->
                         <div class="stat-pill">
                           <div class="lbl">SAN / ${d.max_sanity}</div>
                           ${canControl
-              ? `<input type="number" class="live-stat-input" style="color:var(--status-san);" min="0" max="${d.max_sanity}" value="${d.sanity}" data-room-stat-input="${inv.id}:sanity" title="Digite ou use as setas para alterar Sanidade" />`
-              : `<div class="val" style="color:var(--status-san);">${d.sanity}/${d.max_sanity}</div>`
-            }
+                            ? `<input type="number" class="live-stat-input" style="color:var(--status-san);" min="0" max="${d.max_sanity}" value="${d.sanity}" data-room-stat-input="${inv.id}:sanity" title="Alterar Sanidade" />`
+                            : `<div class="val" style="color:var(--status-san);">${d.sanity}/${d.max_sanity}</div>`
+                          }
                         </div>
 
-                        <!-- SORTE -->
                         <div class="stat-pill">
                           <div class="lbl">Sorte %</div>
                           ${canControl
-              ? `<input type="number" class="live-stat-input" style="color:var(--status-luck);" min="0" max="99" value="${c.luck}" data-room-stat-input="${inv.id}:luck" title="Digite ou use as setas para alterar Sorte" />`
-              : `<div class="val" style="color:var(--status-luck);">${c.luck}%</div>`
-            }
+                            ? `<input type="number" class="live-stat-input" style="color:var(--status-luck);" min="0" max="99" value="${c.luck}" data-room-stat-input="${inv.id}:luck" title="Alterar Sorte" />`
+                            : `<div class="val" style="color:var(--status-luck);">${c.luck}%</div>`
+                          }
                         </div>
 
-                        <!-- PM -->
                         <div class="stat-pill">
                           <div class="lbl">PM / ${d.max_mp}</div>
                           ${canControl
-              ? `<input type="number" class="live-stat-input" style="color:var(--status-mp);" min="0" max="${d.max_mp}" value="${d.mp}" data-room-stat-input="${inv.id}:mp" title="Digite ou use as setas para alterar PM" />`
-              : `<div class="val" style="color:var(--status-mp);">${d.mp}/${d.max_mp}</div>`
-            }
+                            ? `<input type="number" class="live-stat-input" style="color:var(--status-mp);" min="0" max="${d.max_mp}" value="${d.mp}" data-room-stat-input="${inv.id}:mp" title="Alterar PM" />`
+                            : `<div class="val" style="color:var(--status-mp);">${d.mp}/${d.max_mp}</div>`
+                          }
                         </div>
                       </div>
 
-                      <div style="margin-top:0.65rem; display:flex; gap:0.35rem; flex-wrap:wrap;">
+                      <!-- ATRIBUTOS PRIMÁRIOS OFICIAIS (FOR, CON, TAM, DES, APA, INT, POD, EDU) -->
+                      <div class="inv-card-attrs">
+                        ${PRIMARY_CHARACTERISTICS.map((attr) => {
+                          const val = c[attr.key] || 0;
+                          const f = calcFractions(val);
+                          return `
+                            <div class="inv-attr-box ${canControl ? "clickable" : ""}" data-room-roll-attr="${inv.id}:${attr.key}" data-attr-label="${attr.sigla} (${attr.name})" data-attr-target="${val}" data-inv-name="${escapeHtml(inv.name)}" title="${attr.name}: ${val}% (Metade: ${f.half} | 1/5: ${f.fifth})${canControl ? " - Clique para rolar 1D100" : ""}">
+                              <div class="inv-attr-lbl">${attr.sigla}</div>
+                              <div class="inv-attr-val">${val}</div>
+                              <div class="inv-attr-frac">${f.half}/${f.fifth}</div>
+                            </div>
+                          `;
+                        }).join("")}
+                      </div>
+
+                      <!-- SUB-STATUS DE COMBATE & MOVIMENTO -->
+                      <div class="inv-substats-row">
+                        <div>MOV: <strong>${d.mov ?? 8}</strong></div>
+                        <div>BD: <strong>${escapeHtml(d.damage_bonus || "0")}</strong></div>
+                        <div>Corpo: <strong>${d.build ?? 0}</strong></div>
+                        <div class="${canControl ? "clickable-cell" : ""}" data-room-roll-skill="${inv.id}:dodge" data-skill-label="Esquiva" data-skill-target="${dodgeTot}" data-inv-name="${escapeHtml(inv.name)}" title="Esquiva: ${dodgeTot}%${canControl ? " - Clique para rolar" : ""}">
+                          Esquiva: <strong>${dodgeTot}%</strong>
+                        </div>
+                      </div>
+
+                      <!-- PERÍCIAS CHAVE DE DESTAQUE (CLIQUE PARA TESTAR) -->
+                      <div class="inv-top-skills">
+                        ${keySkillCatalog.map((sk) => {
+                          const tot = getInvSkillTotal(inv, sk.id);
+                          return `
+                            <span class="inv-skill-chip ${canControl ? "clickable" : ""}" data-room-roll-skill="${inv.id}:${sk.id}" data-skill-label="${sk.name}" data-skill-target="${tot}" data-inv-name="${escapeHtml(inv.name)}" title="${sk.name}: ${tot}%${canControl ? " - Clique para rolar teste" : ""}">
+                              <i class="fa-solid fa-dice-d20" style="color:var(--crimson-bright); font-size:0.65rem;"></i>
+                              ${sk.name}: <strong>${tot}%</strong>
+                            </span>
+                          `;
+                        }).join("")}
+                      </div>
+
+                      <!-- CONDIÇÕES ATIVAS -->
+                      <div style="margin-top:0.55rem; display:flex; gap:0.35rem; flex-wrap:wrap;">
                         ${activeConditions.length === 0
-              ? `<span style="font-size:0.74rem; color:var(--status-success);"><i class="fa-solid fa-heart-pulse"></i> Estável</span>`
-              : activeConditions
-                .map(
-                  (cond) =>
-                    `<span class="char-formula-badge" style="color:#fca5a5; border:1px solid var(--crimson-primary);">${cond}</span>`
-                )
-                .join("")
-            }
+                          ? `<span style="font-size:0.72rem; color:var(--status-success);"><i class="fa-solid fa-heart-pulse"></i> Estável</span>`
+                          : activeConditions.map((cond) => `<span class="char-formula-badge" style="color:#fca5a5; border:1px solid var(--crimson-primary); font-size:0.68rem;">${cond}</span>`).join("")
+                        }
                       </div>
                     </div>
                   </article>
                 `;
-        })
-        .join("")}
+              }).join("")}
             </div>
           `
     }
@@ -1272,6 +1711,7 @@ function renderCampaignRoom(root) {
         </form>
       </aside>
     </div>
+    ${modalHtml}
   `;
 
   // Auto-scroll chat para o final
@@ -1280,17 +1720,109 @@ function renderCampaignRoom(root) {
     chatList.scrollTop = chatList.scrollHeight;
   }
 
+  // Alternador de modo de exibição dos investigadores (Cards vs Escudo do Guardião)
+  root.querySelector("#btnRoomViewCards")?.addEventListener("click", () => {
+    state.roomViewMode = "cards";
+    render();
+  });
+
+  root.querySelector("#btnRoomViewTable")?.addEventListener("click", () => {
+    state.roomViewMode = "table";
+    render();
+  });
+
+  // Abrir visualizador de todas as fichas no modal da sala
+  root.querySelector("#btnOpenRoomAllSheets")?.addEventListener("click", () => {
+    if (investigatorsInRoom.length === 0) return;
+    state.roomInspectInvestigatorId = investigatorsInRoom[0].id;
+    state.roomInspectTab = "front";
+    render();
+  });
+
+  root.querySelectorAll("[data-room-inspect-inv]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const invId = btn.getAttribute("data-room-inspect-inv");
+      state.roomInspectInvestigatorId = invId;
+      state.roomInspectTab = "front";
+      render();
+    });
+  });
+
+  // Controles do Modal de Inspeção de Ficha
+  root.querySelector("#btnCloseModalInspect")?.addEventListener("click", () => {
+    state.roomInspectInvestigatorId = null;
+    render();
+  });
+
+  root.querySelector("#btnCloseModalInspectX")?.addEventListener("click", () => {
+    state.roomInspectInvestigatorId = null;
+    render();
+  });
+
+  root.querySelector("#selectModalInspectInv")?.addEventListener("change", (e) => {
+    state.roomInspectInvestigatorId = e.target.value;
+    render();
+  });
+
+  root.querySelector("#btnModalInspectPrev")?.addEventListener("click", () => {
+    const curIdx = investigatorsInRoom.findIndex((i) => i.id === state.roomInspectInvestigatorId);
+    const prev = curIdx > 0 ? investigatorsInRoom[curIdx - 1] : investigatorsInRoom[investigatorsInRoom.length - 1];
+    if (prev) {
+      state.roomInspectInvestigatorId = prev.id;
+      render();
+    }
+  });
+
+  root.querySelector("#btnModalInspectNext")?.addEventListener("click", () => {
+    const curIdx = investigatorsInRoom.findIndex((i) => i.id === state.roomInspectInvestigatorId);
+    const next = curIdx < investigatorsInRoom.length - 1 ? investigatorsInRoom[curIdx + 1] : investigatorsInRoom[0];
+    if (next) {
+      state.roomInspectInvestigatorId = next.id;
+      render();
+    }
+  });
+
+  root.querySelector("#btnModalTabFront")?.addEventListener("click", () => {
+    state.roomInspectTab = "front";
+    render();
+  });
+
+  root.querySelector("#btnModalTabSkills")?.addEventListener("click", () => {
+    state.roomInspectTab = "skills";
+    render();
+  });
+
+  root.querySelector("#btnModalTabBack")?.addEventListener("click", () => {
+    state.roomInspectTab = "back";
+    render();
+  });
+
+  root.querySelector("#btnOpenInFullEditor")?.addEventListener("click", async () => {
+    let target = investigatorsInRoom.find((i) => i.id === state.roomInspectInvestigatorId);
+    if (!target) return;
+    try {
+      const fresh = await getInvestigatorById(target.id);
+      if (fresh) target = fresh;
+    } catch (_) {}
+    state.activeSheet = target;
+    state.returnToCampaignId = campaign.id;
+    state.sheetTab = "front";
+    state.view = "sheet";
+    state.roomInspectInvestigatorId = null;
+    render();
+  });
+
   root.querySelector("#btnBackToCampaigns")?.addEventListener("click", async () => {
     await unsubscribeFromCampaignRoom();
     state.onlineUsers = {};
+    state.roomInspectInvestigatorId = null;
     state.view = "campaigns";
     state.campaigns = await listMyCampaigns();
     render();
   });
 
   root.querySelector("#roomSwitchInvestigator")?.addEventListener("change", async (e) => {
-    const invId = e.target.value;
-    if (!invId) return;
+    const invId = e.target.value || null;
     await joinCampaignByCode(campaign.invite_code, invId);
     state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
     render();
@@ -1312,7 +1844,7 @@ function renderCampaignRoom(root) {
     }
   });
 
-  // Rolagem 1D100 (Guardião ou Jogador)
+  // Rolagem 1D100 livre (Guardião ou Jogador)
   root.querySelector("#btnTableRollD100")?.addEventListener("click", async () => {
     const target = Number(root.querySelector("#tableTargetPct")?.value) || 50;
     const evalRes = evaluateD100Roll(target);
@@ -1358,7 +1890,73 @@ function renderCampaignRoom(root) {
     });
   });
 
-  // Rolagem de Atributo/Perícia do Jogador na Mesa
+  // Rolagem de Atributo de qualquer Investigador da Mesa (Cards, Tabela ou Modal)
+  root.querySelectorAll("[data-room-roll-attr]").forEach((el) => {
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const parts = el.getAttribute("data-room-roll-attr").split(":");
+      const invId = parts[0];
+      const attrKey = parts[1];
+      const inv = investigatorsInRoom.find((i) => i.id === invId);
+      if (!inv) return;
+      const attrDef = PRIMARY_CHARACTERISTICS.find((a) => a.key === attrKey);
+      const label = el.getAttribute("data-attr-label") || (attrDef ? `${attrDef.sigla} (${attrDef.name})` : attrKey.toUpperCase());
+      const target = Number(el.getAttribute("data-attr-target")) || Number(inv.characteristics?.[attrKey]) || 50;
+      const evalRes = evaluateD100Roll(target);
+      triggerD100Toast(`${inv.name}: ${label}`, target, evalRes);
+
+      const senderName = isKeeper ? `Guardião [${inv.name}]` : inv.name;
+      await sendCampaignMessage({
+        campaign_id: campaign.id,
+        sender_name: senderName,
+        sender_role: isKeeper ? "keeper" : "player",
+        message_type: "roll",
+        content: `Teste de ${label}`,
+        roll_result: evalRes.roll,
+        roll_target: evalRes.target,
+        roll_level: evalRes.level,
+        roll_code: evalRes.code,
+        is_keeper_secret: isKeeper ? state.keeperSecretMode : false
+      });
+      state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
+      render();
+    });
+  });
+
+  // Rolagem de Perícia de qualquer Investigador da Mesa (Cards, Tabela ou Modal)
+  root.querySelectorAll("[data-room-roll-skill]").forEach((el) => {
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const parts = el.getAttribute("data-room-roll-skill").split(":");
+      const invId = parts[0];
+      const skillId = parts[1];
+      const inv = investigatorsInRoom.find((i) => i.id === invId);
+      if (!inv) return;
+      const skDef = SKILLS_CATALOG.find((s) => s.id === skillId);
+      const label = el.getAttribute("data-skill-label") || skDef?.name || skillId;
+      const target = Number(el.getAttribute("data-skill-target")) || getInvSkillTotal(inv, skillId);
+      const evalRes = evaluateD100Roll(target);
+      triggerD100Toast(`${inv.name}: ${label}`, target, evalRes);
+
+      const senderName = isKeeper ? `Guardião [${inv.name}]` : inv.name;
+      await sendCampaignMessage({
+        campaign_id: campaign.id,
+        sender_name: senderName,
+        sender_role: isKeeper ? "keeper" : "player",
+        message_type: "roll",
+        content: `Teste de ${label}`,
+        roll_result: evalRes.roll,
+        roll_target: evalRes.target,
+        roll_level: evalRes.level,
+        roll_code: evalRes.code,
+        is_keeper_secret: isKeeper ? state.keeperSecretMode : false
+      });
+      state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
+      render();
+    });
+  });
+
+  // Rolagem de Atributo/Perícia da barra rápida do Jogador na Mesa
   root.querySelectorAll("[data-player-roll-label]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const label = btn.getAttribute("data-player-roll-label");
@@ -1432,18 +2030,13 @@ function renderCampaignRoom(root) {
     });
   });
 
-  // Abrir ficha completa a partir da sala da mesa
+  // Abrir ficha completa (redireciona para o inspetor ou editor)
   root.querySelectorAll("[data-room-open-sheet]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const invId = btn.getAttribute("data-room-open-sheet");
-      const sheet = await getInvestigatorById(invId);
-      if (sheet) {
-        state.activeSheet = sheet;
-        state.returnToCampaignId = campaign.id;
-        state.sheetTab = "front";
-        state.view = "sheet";
-        render();
-      }
+      state.roomInspectInvestigatorId = invId;
+      state.roomInspectTab = "front";
+      render();
     });
   });
 
