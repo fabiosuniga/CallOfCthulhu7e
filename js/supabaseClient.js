@@ -266,12 +266,7 @@ export async function saveInvestigator(sheet) {
     });
   if (finErr) throw finErr;
 
-  // 5. investigator_skills
-  await supabaseInstance
-    .from("investigator_skills")
-    .delete()
-    .eq("investigator_id", investigatorId);
-
+  // 5. investigator_skills (upsert atômico pela constraint única)
   const skillRows = Object.entries(sheet.skills || {}).map(([skillId, s]) => ({
     investigator_id: investigatorId,
     skill_id: skillId,
@@ -287,16 +282,13 @@ export async function saveInvestigator(sheet) {
   if (skillRows.length > 0) {
     const { error: skErr } = await supabaseInstance
       .from("investigator_skills")
-      .insert(skillRows);
+      .upsert(skillRows, {
+        onConflict: "investigator_id,skill_id,specialization"
+      });
     if (skErr) throw skErr;
   }
 
-  // 6. investigator_backstory
-  await supabaseInstance
-    .from("investigator_backstory")
-    .delete()
-    .eq("investigator_id", investigatorId);
-
+  // 6. investigator_backstory (upsert atômico pela constraint única)
   const backstoryRows = Object.entries(sheet.backstory || {}).map(([cat, b]) => ({
     investigator_id: investigatorId,
     category: cat,
@@ -307,7 +299,9 @@ export async function saveInvestigator(sheet) {
   if (backstoryRows.length > 0) {
     const { error: bsErr } = await supabaseInstance
       .from("investigator_backstory")
-      .insert(backstoryRows);
+      .upsert(backstoryRows, {
+        onConflict: "investigator_id,category"
+      });
     if (bsErr) throw bsErr;
   }
 
@@ -347,31 +341,82 @@ export async function updateLiveInvestigatorStatus(sheet) {
   const d = sheet.derived;
   const c = sheet.characteristics;
 
-  await Promise.all([
-    supabaseInstance.from("investigator_derived").upsert({
-      investigator_id: sheet.id,
-      hp: Number(d.hp) || 0,
-      max_hp: Number(d.max_hp) || 1,
-      mp: Number(d.mp) || 0,
-      max_mp: Number(d.max_mp) || 0,
-      sanity: Number(d.sanity) || 0,
-      starting_sanity: Number(d.starting_sanity) || 0,
-      max_sanity: Number(d.max_sanity) || 99,
-      mov: Number(d.mov) || 8,
-      build: Number(d.build) || 0,
-      damage_bonus: String(d.damage_bonus || "0"),
-      major_wound: Boolean(d.major_wound),
-      unconscious: Boolean(d.unconscious),
-      dying: Boolean(d.dying),
-      temp_insanity: Boolean(d.temp_insanity),
-      indef_insanity: Boolean(d.indef_insanity),
-      out_of_luck: Boolean(d.out_of_luck)
-    }),
+  const [derRes, charRes] = await Promise.all([
+    supabaseInstance
+      .from("investigator_derived")
+      .update({
+        hp: Number(d.hp) || 0,
+        max_hp: Number(d.max_hp) || 1,
+        mp: Number(d.mp) || 0,
+        max_mp: Number(d.max_mp) || 0,
+        sanity: Number(d.sanity) || 0,
+        starting_sanity: Number(d.starting_sanity) || 0,
+        max_sanity: Number(d.max_sanity) || 99,
+        mov: Number(d.mov) || 8,
+        build: Number(d.build) || 0,
+        damage_bonus: String(d.damage_bonus || "0"),
+        major_wound: Boolean(d.major_wound),
+        unconscious: Boolean(d.unconscious),
+        dying: Boolean(d.dying),
+        temp_insanity: Boolean(d.temp_insanity),
+        indef_insanity: Boolean(d.indef_insanity),
+        out_of_luck: Boolean(d.out_of_luck)
+      })
+      .eq("investigator_id", sheet.id),
     supabaseInstance
       .from("investigator_characteristics")
       .update({ luck: Number(c.luck) || 0 })
       .eq("investigator_id", sheet.id)
   ]);
+
+  if (derRes.error) console.warn("Erro ao atualizar status derivado:", derRes.error);
+  if (charRes.error) console.warn("Erro ao atualizar sorte:", charRes.error);
+}
+
+export async function updateInvestigatorSkillCheck(investigatorId, skillEntry) {
+  if (!supabaseInstance || !investigatorId || !skillEntry?.skill_id) return;
+  const { error } = await supabaseInstance
+    .from("investigator_skills")
+    .upsert(
+      {
+        investigator_id: investigatorId,
+        skill_id: skillEntry.skill_id,
+        specialization: skillEntry.specialization || "",
+        base_value: Number(skillEntry.base_value) || 0,
+        occupation_points: Number(skillEntry.occupation_points) || 0,
+        personal_points: Number(skillEntry.personal_points) || 0,
+        experience_points: Number(skillEntry.experience_points) || 0,
+        is_occupation_skill: Boolean(skillEntry.is_occupation_skill),
+        checked_for_improvement: Boolean(skillEntry.checked_for_improvement)
+      },
+      { onConflict: "investigator_id,skill_id,specialization" }
+    );
+  if (error) console.warn("Erro ao atualizar melhoria de perícia:", error);
+}
+
+export async function updateInvestigatorBackstoryEntry(investigatorId, category, entry) {
+  if (!supabaseInstance || !investigatorId || !category) return;
+  const { error } = await supabaseInstance
+    .from("investigator_backstory")
+    .upsert(
+      {
+        investigator_id: investigatorId,
+        category,
+        entry_text: entry?.entry_text || "",
+        is_key_connection: Boolean(entry?.is_key_connection)
+      },
+      { onConflict: "investigator_id,category" }
+    );
+  if (error) console.warn("Erro ao atualizar antecedente:", error);
+}
+
+export async function updateInvestigatorEquipment(investigatorId, personalEquipment) {
+  if (!supabaseInstance || !investigatorId) return;
+  const { error } = await supabaseInstance
+    .from("investigators")
+    .update({ personal_equipment: personalEquipment || "" })
+    .eq("id", investigatorId);
+  if (error) console.warn("Erro ao atualizar equipamento:", error);
 }
 
 export async function deleteInvestigator(id) {
@@ -412,7 +457,22 @@ export async function listMyCampaigns() {
     .from("campaigns")
     .select(`
       *,
-      campaign_members (id, user_id, investigator_id, role)
+      campaign_members (
+        id,
+        user_id,
+        investigator_id,
+        role,
+        investigators (
+          id,
+          name,
+          player_name,
+          occupation_id,
+          custom_occupation_name,
+          age,
+          era,
+          investigator_derived (hp, max_hp, sanity, max_sanity)
+        )
+      )
     `)
     .order("created_at", { ascending: false });
 
@@ -537,6 +597,7 @@ export async function getCampaignRoomData(campaignId) {
         investigator_derived (*),
         investigator_finances (*),
         investigator_skills (*),
+        investigator_backstory (*),
         investigator_weapons (*)
       `)
       .in("id", invIds);
@@ -617,7 +678,12 @@ export async function sendCampaignMessage({
   return data;
 }
 
-export async function subscribeToCampaignRoom(campaignId, onRoomChange, onPresenceChange = null) {
+export async function subscribeToCampaignRoom(
+  campaignId,
+  onRoomChange,
+  onPresenceChange = null,
+  activeInvestigator = null
+) {
   if (!supabaseInstance) return;
   await unsubscribeFromCampaignRoom();
 
@@ -639,7 +705,7 @@ export async function subscribeToCampaignRoom(campaignId, onRoomChange, onPresen
       const onlineMap = {};
       for (const [uid, presences] of Object.entries(presenceState)) {
         if (presences && presences.length > 0) {
-          onlineMap[uid] = presences[0];
+          onlineMap[uid] = presences[presences.length - 1];
         }
       }
       onPresenceChange(onlineMap);
@@ -687,10 +753,26 @@ export async function subscribeToCampaignRoom(campaignId, onRoomChange, onPresen
         await activeRealtimeChannel.track({
           user_id: user.id,
           name: displayName,
+          investigator_id: activeInvestigator?.id || null,
+          investigator_name: activeInvestigator?.name || null,
           online_at: new Date().toISOString()
         });
       }
     });
+}
+
+export async function updateCampaignRoomPresence(activeInvestigator = null) {
+  if (!supabaseInstance || !activeRealtimeChannel) return;
+  const user = await getCurrentUser();
+  if (!user) return;
+  const displayName = getUserDisplayName(user);
+  await activeRealtimeChannel.track({
+    user_id: user.id,
+    name: displayName,
+    investigator_id: activeInvestigator?.id || null,
+    investigator_name: activeInvestigator?.name || null,
+    online_at: new Date().toISOString()
+  });
 }
 
 export async function unsubscribeFromCampaignRoom() {

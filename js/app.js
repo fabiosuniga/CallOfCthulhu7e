@@ -16,6 +16,9 @@ import {
   getInvestigatorById,
   saveInvestigator,
   updateLiveInvestigatorStatus,
+  updateInvestigatorSkillCheck,
+  updateInvestigatorBackstoryEntry,
+  updateInvestigatorEquipment,
   deleteInvestigator,
   listMyCampaigns,
   createCampaign,
@@ -26,6 +29,7 @@ import {
   sendCampaignMessage,
   clearCampaignMessages,
   subscribeToCampaignRoom,
+  updateCampaignRoomPresence,
   unsubscribeFromCampaignRoom
 } from "./supabaseClient.js";
 import {
@@ -328,6 +332,72 @@ function startNewInvestigatorWizard() {
   state.wizardStep = 1;
   state.view = "wizard";
   render();
+}
+
+function hydrateDraftFromSheet(sheet) {
+  const base = createBlankDraft();
+  const occ =
+    OCCUPATIONS_CATALOG.find((o) => o.id === sheet.occupation_id) ||
+    OCCUPATIONS_CATALOG[0];
+
+  const fixedSet = new Set(occ.fixed_skills || []);
+  const interpersonalIds = new Set(
+    SKILLS_CATALOG.filter((s) => s.is_interpersonal).map((s) => s.id)
+  );
+
+  const selectedInterpersonal = [];
+  const selectedFree = [];
+
+  for (const [skId, skEntry] of Object.entries(sheet.skills || {})) {
+    if (skId === "credit_rating" || skId === "cthulhu_mythos") continue;
+    if (fixedSet.has(skId)) continue;
+    if (skEntry?.is_occupation_skill || (Number(skEntry?.occupation_points) || 0) > 0) {
+      if (interpersonalIds.has(skId) && selectedInterpersonal.length < occ.interpersonal_slots) {
+        selectedInterpersonal.push(skId);
+      } else if (selectedFree.length < occ.free_slots) {
+        selectedFree.push(skId);
+      }
+    }
+  }
+
+  for (const sk of SKILLS_CATALOG.filter((s) => s.is_interpersonal)) {
+    if (selectedInterpersonal.length >= occ.interpersonal_slots) break;
+    if (!selectedInterpersonal.includes(sk.id) && !fixedSet.has(sk.id)) {
+      selectedInterpersonal.push(sk.id);
+    }
+  }
+
+  for (const sk of SKILLS_CATALOG) {
+    if (selectedFree.length >= occ.free_slots) break;
+    if (
+      sk.id !== "credit_rating" &&
+      sk.id !== "cthulhu_mythos" &&
+      !fixedSet.has(sk.id) &&
+      !selectedInterpersonal.includes(sk.id) &&
+      !selectedFree.includes(sk.id)
+    ) {
+      selectedFree.push(sk.id);
+    }
+  }
+
+  const bracket = getAgeBracket(sheet.age || 25);
+  const ageDeductions = { str: 0, con: 0, dex: 0, siz: 0 };
+  if (bracket.physicalPenaltyTotal > 0 && bracket.physicalTargets.length > 0) {
+    ageDeductions[bracket.physicalTargets[0]] = bracket.physicalPenaltyTotal;
+  }
+
+  const draft = {
+    ...base,
+    ...sheet,
+    selected_interpersonal: selectedInterpersonal,
+    selected_free_skills: selectedFree,
+    age_deductions: ageDeductions,
+    skills: { ...base.skills, ...(sheet.skills || {}) },
+    backstory: { ...base.backstory, ...(sheet.backstory || {}) }
+  };
+
+  recalculateDraft(draft);
+  return draft;
 }
 
 // ============================================================================
@@ -638,14 +708,7 @@ function renderDashboard(root) {
       const id = btn.getAttribute("data-edit-id");
       const sheet = await getInvestigatorById(id);
       if (sheet) {
-        const base = createBlankDraft();
-        state.draft = {
-          ...base,
-          ...sheet,
-          skills: { ...base.skills, ...(sheet.skills || {}) },
-          backstory: { ...base.backstory, ...(sheet.backstory || {}) }
-        };
-        recalculateDraft(state.draft);
+        state.draft = hydrateDraftFromSheet(sheet);
         state.wizardStep = 1;
         state.view = "wizard";
         render();
@@ -757,6 +820,7 @@ function renderCampaignsList(root) {
           ${state.campaigns
         .map((c) => {
           const isKeeper = c.keeper_id === state.currentUser.id;
+          const linkedMembers = (c.campaign_members || []).filter((m) => m.investigators);
           const memberCount = (c.campaign_members || []).length;
           return `
               <article class="inv-card">
@@ -780,8 +844,44 @@ function renderCampaignsList(root) {
               : ""
             }
                   <div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.65rem;">
-                    <i class="fa-solid fa-users"></i> ${memberCount} investigador(es) na mesa
+                    <i class="fa-solid fa-users"></i> ${memberCount} membro(s) • ${linkedMembers.length} ficha(s) vinculada(s)
                   </div>
+                  ${linkedMembers.length > 0
+              ? `
+                    <div style="display:flex; flex-direction:column; gap:0.35rem; margin-top:0.6rem; padding-top:0.55rem; border-top:1px dashed var(--border-subtle);">
+                      <div style="font-size:0.72rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em; font-weight:700;">
+                        Investigadores Vinculados:
+                      </div>
+                      <div style="display:flex; flex-wrap:wrap; gap:0.35rem;">
+                        ${linkedMembers
+                .map((m) => {
+                  const inv = Array.isArray(m.investigators) ? m.investigators[0] : m.investigators;
+                  if (!inv) return "";
+                  const der = Array.isArray(inv.investigator_derived)
+                    ? inv.investigator_derived[0]
+                    : inv.investigator_derived || {};
+                  return `
+                              <button
+                                type="button"
+                                class="btn btn-sm"
+                                data-camp-open-inv="${inv.id}"
+                                data-camp-id="${c.id}"
+                                style="padding:0.2rem 0.5rem; font-size:0.73rem;"
+                                title="Abrir ficha de ${escapeHtml(inv.name)}"
+                              >
+                                <i class="fa-solid fa-scroll" style="color:var(--crimson-bright);"></i>
+                                ${escapeHtml(inv.name)}
+                                ${inv.player_name ? `<span style="color:var(--text-muted);">(${escapeHtml(inv.player_name)})</span>` : ""}
+                                ${der.hp !== undefined ? `<span style="font-family:var(--font-mono); color:var(--status-hp);">PV ${der.hp}/${der.max_hp}</span>` : ""}
+                              </button>
+                            `;
+                })
+                .join("")}
+                      </div>
+                    </div>
+                  `
+              : ""
+            }
                 </div>
 
                 <div style="display:flex; justify-content:space-between; gap:0.5rem; padding-top:0.75rem; border-top:1px solid var(--border-subtle);">
@@ -835,6 +935,22 @@ function renderCampaignsList(root) {
     });
   });
 
+  root.querySelectorAll("[data-camp-open-inv]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const invId = btn.getAttribute("data-camp-open-inv");
+      const campId = btn.getAttribute("data-camp-id");
+      const sheet = await getInvestigatorById(invId);
+      if (sheet) {
+        state.activeCampaignRoom = await getCampaignRoomData(campId);
+        state.activeSheet = sheet;
+        state.returnToCampaignId = campId;
+        state.sheetTab = "front";
+        state.view = "sheet";
+        render();
+      }
+    });
+  });
+
   root.querySelectorAll("[data-del-camp]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-del-camp");
@@ -864,6 +980,11 @@ async function openCampaignRoom(campaignId) {
     state.view = "campaign_room";
     render();
 
+    const myMember = (state.activeCampaignRoom.members || []).find(
+      (m) => m.user_id === state.currentUser?.id
+    );
+    const myInv = myMember?.investigator || null;
+
     await subscribeToCampaignRoom(
       campaignId,
       async () => {
@@ -877,7 +998,8 @@ async function openCampaignRoom(campaignId) {
         if (state.view === "campaign_room" && state.activeCampaignRoom?.campaign?.id === campaignId) {
           renderCampaignRoom(document.getElementById("appRoot"));
         }
-      }
+      },
+      myInv
     );
   } catch (err) {
     alert(err.message || "Não foi possível abrir a sala da mesa.");
@@ -888,11 +1010,32 @@ async function openCampaignRoom(campaignId) {
 // 1.6. VISÃO: SALA AO VIVO DA MESA (STATUS EM TEMPO REAL + CHAT & DADOS OCULTOS)
 // ============================================================================
 function renderCampaignRoom(root) {
+  // Preservar estado de digitação e foco caso um evento Realtime atualize a sala
+  const prevChatInput = root.querySelector("#roomChatInput");
+  const preservedChatValue = prevChatInput ? prevChatInput.value : "";
+  const preservedChatFocused = document.activeElement === prevChatInput;
+  const preservedChatSelStart = prevChatInput?.selectionStart ?? null;
+  const preservedChatSelEnd = prevChatInput?.selectionEnd ?? null;
+
+  const prevTargetInput = root.querySelector("#tableTargetPct");
+  const preservedTargetValue = prevTargetInput ? prevTargetInput.value : "50";
+
   const { campaign, members, messages } = state.activeCampaignRoom;
   const isKeeper = campaign.keeper_id === state.currentUser.id;
   const myMember = members.find((m) => m.user_id === state.currentUser.id);
   const myInv = myMember?.investigator || null;
   const onlineList = Object.values(state.onlineUsers || {});
+
+  const sortedMembersWithInv = members
+    .filter((m) => m.investigator)
+    .sort((a, b) => {
+      const aOnline = Boolean(state.onlineUsers?.[a.user_id]) ? 1 : 0;
+      const bOnline = Boolean(state.onlineUsers?.[b.user_id]) ? 1 : 0;
+      if (aOnline !== bOnline) return bOnline - aOnline;
+      if (a.user_id === state.currentUser.id) return -1;
+      if (b.user_id === state.currentUser.id) return 1;
+      return 0;
+    });
 
   root.innerHTML = `
     <!-- CABEÇALHO DA SALA AO VIVO -->
@@ -954,11 +1097,20 @@ function renderCampaignRoom(root) {
       : onlineList
         .map((u) => {
           const uIsKeeper = u.user_id === campaign.keeper_id;
+          const uMember = members.find((m) => m.user_id === u.user_id);
+          const connectedInv = uMember?.investigator || null;
+          const invName = connectedInv?.name || u.investigator_name || null;
+          const invId = connectedInv?.id || u.investigator_id || null;
           return `
-                  <span class="presence-badge">
+                  <span class="presence-badge" style="display:inline-flex; align-items:center; gap:0.35rem;">
                     <span class="presence-dot online"></span>
                     ${uIsKeeper ? `<i class="fa-solid fa-crown" style="color:var(--status-luck);"></i>` : `<i class="fa-solid fa-user"></i>`}
-                    ${escapeHtml(u.name || "Investigador")}${uIsKeeper ? " (Guardião)" : ""}
+                    <span>${escapeHtml(u.name || "Investigador")}${uIsKeeper ? " (Guardião)" : ""}</span>
+                    ${invName ? `<span style="color:var(--crimson-bright); font-weight:700;">• ${escapeHtml(invName)}</span>` : ""}
+                    ${invId
+              ? `<button type="button" class="btn btn-sm" data-room-open-sheet="${invId}" style="padding:0.05rem 0.38rem; font-size:0.66rem; margin-left:0.15rem;" title="Ver Ficha Conectada de ${escapeHtml(invName || u.name)}"><i class="fa-solid fa-scroll"></i> Ver Ficha</button>`
+              : ""
+            }
                   </span>
                 `;
         })
@@ -992,7 +1144,7 @@ function renderCampaignRoom(root) {
     }
 
             <div style="display:flex; align-items:center; gap:0.4rem;">
-              <input type="number" id="tableTargetPct" min="1" max="99" value="50" style="width:72px; padding:0.3rem 0.45rem; font-family:var(--font-mono);" title="Alvo % para teste 1D100" />
+              <input type="number" id="tableTargetPct" min="1" max="99" value="${escapeHtml(preservedTargetValue)}" style="width:72px; padding:0.3rem 0.45rem; font-family:var(--font-mono);" title="Alvo % para teste 1D100" />
               <button type="button" class="btn btn-primary btn-sm" id="btnTableRollD100">
                 <i class="fa-solid fa-dice-d20"></i> Rolar 1D100 (Alvo %)
               </button>
@@ -1014,9 +1166,9 @@ function renderCampaignRoom(root) {
 
         <!-- MONITORAMENTO AO VIVO DOS INVESTIGADORES DA MESA -->
         <section class="ornate-panel">
-          <div class="section-banner">Status Ao Vivo dos Investigadores na Mesa (${members.filter((m) => m.investigator).length})</div>
+          <div class="section-banner">Fichas Conectadas & Investigadores Vinculados na Mesa (${sortedMembersWithInv.length})</div>
 
-          ${members.filter((m) => m.investigator).length === 0
+          ${sortedMembersWithInv.length === 0
       ? `
             <div style="text-align:center; padding:1.75rem 1rem; color:var(--text-secondary); font-size:0.88rem;">
               Nenhum investigador vinculado à mesa ainda. Compartilhe o código <strong>${escapeHtml(
@@ -1026,8 +1178,7 @@ function renderCampaignRoom(root) {
           `
       : `
             <div class="investigators-grid" style="grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));">
-              ${members
-        .filter((m) => m.investigator)
+              ${sortedMembersWithInv
         .map((m) => {
           const inv = m.investigator;
           const d = inv.derived || {};
@@ -1046,7 +1197,11 @@ function renderCampaignRoom(root) {
           if (d.out_of_luck) activeConditions.push("Sem Sorte");
 
           return `
-                  <article class="inv-card" style="border-color:${m.user_id === state.currentUser.id ? "var(--crimson-primary)" : "var(--border-ornate)"
+                  <article class="inv-card" style="border-color:${m.user_id === state.currentUser.id
+              ? "var(--crimson-primary)"
+              : isUserOnline
+                ? "var(--status-success)"
+                : "var(--border-ornate)"
             };">
                     <div>
                       <div class="inv-card-header">
@@ -1055,17 +1210,16 @@ function renderCampaignRoom(root) {
                             <h3 class="inv-card-name">${escapeHtml(inv.name)}</h3>
                             <span class="presence-badge" style="padding:0.1rem 0.45rem; font-size:0.68rem;">
                               <span class="presence-dot ${isUserOnline ? "online" : "offline"}"></span>
-                              ${isUserOnline ? "Online" : "Offline"}
+                              ${isUserOnline ? "Online na Mesa" : "Offline"}
                             </span>
                           </div>
                           <div class="inv-card-occ">${escapeHtml(occName)} • Jogador: ${escapeHtml(
               inv.player_name || "Investigador"
             )}</div>
                         </div>
-                        ${m.user_id === state.currentUser.id || isKeeper
-              ? `<button type="button" class="btn btn-sm" data-room-open-sheet="${inv.id}" title="Abrir Ficha Completa"><i class="fa-solid fa-scroll"></i> Ficha</button>`
-              : ""
-            }
+                        <button type="button" class="btn btn-sm" data-room-open-sheet="${inv.id}" title="Abrir Ficha Completa de ${escapeHtml(inv.name)}">
+                          <i class="fa-solid fa-scroll"></i> ${canControl ? "Ficha" : "Ver Ficha"}
+                        </button>
                       </div>
 
                       <div class="inv-stat-pills" style="margin-top:0.75rem;">
@@ -1265,7 +1419,7 @@ function renderCampaignRoom(root) {
         </div>
 
         <form id="formRoomChat" style="display:flex; gap:0.45rem; padding:0.75rem; border-top:1px solid var(--border-ornate); background:var(--bg-elevated);">
-          <input type="text" id="roomChatInput" placeholder="Enviar mensagem ou nota na mesa..." autocomplete="off" />
+          <input type="text" id="roomChatInput" value="${escapeHtml(preservedChatValue)}" placeholder="Enviar mensagem ou nota na mesa..." autocomplete="off" />
           <button type="submit" class="btn btn-primary btn-sm">
             <i class="fa-solid fa-paper-plane"></i>
           </button>
@@ -1278,6 +1432,21 @@ function renderCampaignRoom(root) {
   const chatList = root.querySelector("#roomChatList");
   if (chatList) {
     chatList.scrollTop = chatList.scrollHeight;
+  }
+
+  // Restaurar foco e posição do cursor caso o usuário estivesse digitando no chat
+  if (preservedChatFocused) {
+    const newChatInput = root.querySelector("#roomChatInput");
+    if (newChatInput) {
+      newChatInput.focus();
+      if (preservedChatSelStart !== null && preservedChatSelEnd !== null) {
+        try {
+          newChatInput.setSelectionRange(preservedChatSelStart, preservedChatSelEnd);
+        } catch (_err) {
+          // Ignorar caso não aplicável
+        }
+      }
+    }
   }
 
   root.querySelector("#btnBackToCampaigns")?.addEventListener("click", async () => {
@@ -1293,6 +1462,10 @@ function renderCampaignRoom(root) {
     if (!invId) return;
     await joinCampaignByCode(campaign.invite_code, invId);
     state.activeCampaignRoom = await getCampaignRoomData(campaign.id);
+    const updatedMember = (state.activeCampaignRoom.members || []).find(
+      (m) => m.user_id === state.currentUser?.id
+    );
+    await updateCampaignRoomPresence(updatedMember?.investigator || null);
     render();
   });
 
@@ -2634,6 +2807,12 @@ function renderEditableSheet(root, sheet) {
   const f = sheet.finances || {};
   const occ = OCCUPATIONS_CATALOG.find((o) => o.id === sheet.occupation_id);
   const occName = sheet.custom_occupation_name || occ?.name || "Investigador";
+  const isOwner = sheet.user_id === state.currentUser?.id;
+  const isActiveCampaignKeeper =
+    Boolean(state.returnToCampaignId) &&
+    state.activeCampaignRoom?.campaign?.keeper_id === state.currentUser?.id;
+  const canEditSheet = isOwner || isActiveCampaignKeeper;
+
   const dodgeSkill = sheet.skills?.dodge || {
     base_value: Math.floor((c.dex || 50) / 2),
     occupation_points: 0,
@@ -2652,7 +2831,7 @@ function renderEditableSheet(root, sheet) {
   root.innerHTML = `
     <!-- BARRA DE CONTROLE DA FICHA -->
     <div class="ornate-panel no-print" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; padding:0.85rem 1.2rem;">
-      <div style="display:flex; gap:0.5rem;">
+      <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
         <button type="button" class="btn btn-sm" id="btnBackToDash">
           <i class="fa-solid fa-arrow-left"></i> ${state.returnToCampaignId ? "Voltar para a Mesa Ao Vivo" : "Meus Investigadores"}
         </button>
@@ -2662,6 +2841,12 @@ function renderEditableSheet(root, sheet) {
         <button type="button" class="btn btn-sm ${state.sheetTab === "back" ? "btn-primary" : ""}" id="btnTabBack">
           <i class="fa-solid fa-scroll"></i> Verso da Ficha (Antecedentes, Pertences & Finanças)
         </button>
+        ${!canEditSheet
+      ? `<span class="char-formula-badge" style="color:var(--status-luck); border:1px solid var(--status-luck); padding:0.2rem 0.55rem;"><i class="fa-solid fa-eye"></i> Visualizando Ficha Conectada na Mesa (Somente Leitura)</span>`
+      : isActiveCampaignKeeper && !isOwner
+        ? `<span class="char-formula-badge" style="color:var(--status-san); border:1px solid var(--status-san); padding:0.2rem 0.55rem;"><i class="fa-solid fa-crown"></i> Modo Guardião (Edição Permitida)</span>`
+        : ""
+    }
       </div>
       <div style="display:flex; gap:0.5rem;">
         <span style="font-size:0.78rem; color:var(--text-secondary); align-self:center;">
@@ -2739,14 +2924,14 @@ function renderEditableSheet(root, sheet) {
               <span style="font-family:var(--font-mono); font-size:0.76rem; color:var(--text-secondary);">Máx: ${d.max_hp}</span>
             </div>
             <div class="track-counter">
-              <button type="button" class="btn btn-sm" data-stat-delta="hp:-1">−</button>
-              <input type="number" class="live-stat-input" style="color:var(--status-hp); width:68px; font-size:1.15rem;" min="0" max="${d.max_hp}" value="${d.hp}" data-sheet-stat-input="hp" />
-              <button type="button" class="btn btn-sm" data-stat-delta="hp:1">+</button>
+              <button type="button" class="btn btn-sm" data-stat-delta="hp:-1" ${!canEditSheet ? "disabled" : ""}>−</button>
+              <input type="number" class="live-stat-input" style="color:var(--status-hp); width:68px; font-size:1.15rem;" min="0" max="${d.max_hp}" value="${d.hp}" data-sheet-stat-input="hp" ${!canEditSheet ? "disabled" : ""} />
+              <button type="button" class="btn btn-sm" data-stat-delta="hp:1" ${!canEditSheet ? "disabled" : ""}>+</button>
             </div>
             <div class="track-flags">
-              <label class="flag-check"><input type="checkbox" data-flag-toggle="major_wound" ${d.major_wound ? "checked" : ""} /> Lesão Grave</label>
-              <label class="flag-check"><input type="checkbox" data-flag-toggle="unconscious" ${d.unconscious ? "checked" : ""} /> Inconsciente</label>
-              <label class="flag-check"><input type="checkbox" data-flag-toggle="dying" ${d.dying ? "checked" : ""} /> Morrendo</label>
+              <label class="flag-check"><input type="checkbox" data-flag-toggle="major_wound" ${d.major_wound ? "checked" : ""} ${!canEditSheet ? "disabled" : ""} /> Lesão Grave</label>
+              <label class="flag-check"><input type="checkbox" data-flag-toggle="unconscious" ${d.unconscious ? "checked" : ""} ${!canEditSheet ? "disabled" : ""} /> Inconsciente</label>
+              <label class="flag-check"><input type="checkbox" data-flag-toggle="dying" ${d.dying ? "checked" : ""} ${!canEditSheet ? "disabled" : ""} /> Morrendo</label>
             </div>
           </div>
 
@@ -2759,14 +2944,14 @@ function renderEditableSheet(root, sheet) {
               </button>
             </div>
             <div class="track-counter">
-              <button type="button" class="btn btn-sm" data-stat-delta="sanity:-1">−</button>
-              <input type="number" class="live-stat-input" style="color:var(--status-san); width:68px; font-size:1.15rem;" min="0" max="${d.max_sanity}" value="${d.sanity}" data-sheet-stat-input="sanity" />
-              <button type="button" class="btn btn-sm" data-stat-delta="sanity:1">+</button>
+              <button type="button" class="btn btn-sm" data-stat-delta="sanity:-1" ${!canEditSheet ? "disabled" : ""}>−</button>
+              <input type="number" class="live-stat-input" style="color:var(--status-san); width:68px; font-size:1.15rem;" min="0" max="${d.max_sanity}" value="${d.sanity}" data-sheet-stat-input="sanity" ${!canEditSheet ? "disabled" : ""} />
+              <button type="button" class="btn btn-sm" data-stat-delta="sanity:1" ${!canEditSheet ? "disabled" : ""}>+</button>
             </div>
             <div class="track-flags">
               <span style="font-size:0.7rem; color:var(--text-muted);">Inicial: ${d.starting_sanity}</span>
-              <label class="flag-check"><input type="checkbox" data-flag-toggle="temp_insanity" ${d.temp_insanity ? "checked" : ""} /> Insan. Temp.</label>
-              <label class="flag-check"><input type="checkbox" data-flag-toggle="indef_insanity" ${d.indef_insanity ? "checked" : ""} /> Insan. Indef.</label>
+              <label class="flag-check"><input type="checkbox" data-flag-toggle="temp_insanity" ${d.temp_insanity ? "checked" : ""} ${!canEditSheet ? "disabled" : ""} /> Insan. Temp.</label>
+              <label class="flag-check"><input type="checkbox" data-flag-toggle="indef_insanity" ${d.indef_insanity ? "checked" : ""} ${!canEditSheet ? "disabled" : ""} /> Insan. Indef.</label>
             </div>
           </div>
 
@@ -2779,12 +2964,12 @@ function renderEditableSheet(root, sheet) {
               </button>
             </div>
             <div class="track-counter">
-              <button type="button" class="btn btn-sm" data-stat-delta="luck:-1">−</button>
-              <input type="number" class="live-stat-input" style="color:var(--status-luck); width:68px; font-size:1.15rem;" min="0" max="99" value="${c.luck}" data-sheet-stat-input="luck" />
-              <button type="button" class="btn btn-sm" data-stat-delta="luck:1">+</button>
+              <button type="button" class="btn btn-sm" data-stat-delta="luck:-1" ${!canEditSheet ? "disabled" : ""}>−</button>
+              <input type="number" class="live-stat-input" style="color:var(--status-luck); width:68px; font-size:1.15rem;" min="0" max="99" value="${c.luck}" data-sheet-stat-input="luck" ${!canEditSheet ? "disabled" : ""} />
+              <button type="button" class="btn btn-sm" data-stat-delta="luck:1" ${!canEditSheet ? "disabled" : ""}>+</button>
             </div>
             <div class="track-flags">
-              <label class="flag-check"><input type="checkbox" data-flag-toggle="out_of_luck" ${d.out_of_luck ? "checked" : ""} /> Sem Sorte</label>
+              <label class="flag-check"><input type="checkbox" data-flag-toggle="out_of_luck" ${d.out_of_luck ? "checked" : ""} ${!canEditSheet ? "disabled" : ""} /> Sem Sorte</label>
             </div>
           </div>
 
@@ -2795,9 +2980,9 @@ function renderEditableSheet(root, sheet) {
               <span style="font-family:var(--font-mono); font-size:0.76rem; color:var(--text-secondary);">Máx: ${d.max_mp}</span>
             </div>
             <div class="track-counter">
-              <button type="button" class="btn btn-sm" data-stat-delta="mp:-1">−</button>
-              <input type="number" class="live-stat-input" style="color:var(--status-mp); width:68px; font-size:1.15rem;" min="0" max="${d.max_mp}" value="${d.mp}" data-sheet-stat-input="mp" />
-              <button type="button" class="btn btn-sm" data-stat-delta="mp:1">+</button>
+              <button type="button" class="btn btn-sm" data-stat-delta="mp:-1" ${!canEditSheet ? "disabled" : ""}>−</button>
+              <input type="number" class="live-stat-input" style="color:var(--status-mp); width:68px; font-size:1.15rem;" min="0" max="${d.max_mp}" value="${d.mp}" data-sheet-stat-input="mp" ${!canEditSheet ? "disabled" : ""} />
+              <button type="button" class="btn btn-sm" data-stat-delta="mp:1" ${!canEditSheet ? "disabled" : ""}>+</button>
             </div>
             <div class="track-flags">
               <span style="font-size:0.72rem; color:var(--text-muted);">Regenera 1 pt por hora</span>
@@ -2833,6 +3018,7 @@ function renderEditableSheet(root, sheet) {
                   title="Marcar para evolução de perícia"
                   data-skill-improve="${sk.id}"
                   ${entry.checked_for_improvement ? "checked" : ""}
+                  ${!canEditSheet ? "disabled" : ""}
                 />
                 <div class="skill-title" style="cursor:pointer;" data-roll-d100-label="${sk.name}" data-roll-d100-val="${frac.total}">
                   <span><i class="fa-solid fa-dice-d20" style="color:var(--crimson-primary); font-size:0.72rem; margin-right:0.25rem;"></i>${sk.name}</span>
@@ -2938,7 +3124,7 @@ function renderEditableSheet(root, sheet) {
             : ""
           }
                 </div>
-                <textarea rows="2" data-sheet-backstory="${cat.id}" placeholder="${escapeHtml(cat.placeholder)}">${escapeHtml(
+                <textarea rows="2" data-sheet-backstory="${cat.id}" placeholder="${escapeHtml(cat.placeholder)}" ${!canEditSheet ? "readonly disabled" : ""}>${escapeHtml(
             entry.entry_text
           )}</textarea>
               </div>
@@ -2949,7 +3135,7 @@ function renderEditableSheet(root, sheet) {
         <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:1rem;">
           <div style="background:var(--bg-elevated); border:1px solid var(--border-ornate); padding:0.9rem; border-radius:4px;">
             <div class="section-banner" style="margin-bottom:0.65rem;">EQUIPAMENTO E PERTENCES</div>
-            <textarea rows="5" id="sheetEquipmentTxt">${escapeHtml(sheet.personal_equipment || "")}</textarea>
+            <textarea rows="5" id="sheetEquipmentTxt" ${!canEditSheet ? "readonly disabled" : ""}>${escapeHtml(sheet.personal_equipment || "")}</textarea>
           </div>
 
           <div style="background:var(--bg-elevated); border:1px solid var(--border-ornate); padding:0.9rem; border-radius:4px;">
@@ -2998,19 +3184,21 @@ function renderEditableSheet(root, sheet) {
       const val = Number(el.getAttribute("data-roll-d100-val")) || 0;
       const evalRes = triggerD100Toast(label, val);
 
-      if (state.returnToCampaignId) {
+      if (state.returnToCampaignId && canEditSheet) {
         try {
           await sendCampaignMessage({
             campaign_id: state.returnToCampaignId,
-            sender_name: sheet.name || getUserDisplayName(state.currentUser),
-            sender_role: "player",
+            sender_name: isActiveCampaignKeeper && !isOwner
+              ? `Guardião (${sheet.name})`
+              : sheet.name || getUserDisplayName(state.currentUser),
+            sender_role: isActiveCampaignKeeper && !isOwner ? "keeper" : "player",
             message_type: "roll",
             content: `Teste de ${label}`,
             roll_result: evalRes.roll,
             roll_target: evalRes.target,
             roll_level: evalRes.level,
             roll_code: evalRes.code,
-            is_keeper_secret: false
+            is_keeper_secret: isActiveCampaignKeeper && !isOwner ? state.keeperSecretMode : false
           });
         } catch (err) {
           console.warn("Erro ao enviar rolagem para a mesa:", err);
@@ -3018,6 +3206,8 @@ function renderEditableSheet(root, sheet) {
       }
     });
   });
+
+  if (!canEditSheet) return;
 
   // Contadores +/- de PV, Sanidade, Sorte e PM
   root.querySelectorAll("[data-stat-delta]").forEach((btn) => {
@@ -3082,7 +3272,7 @@ function renderEditableSheet(root, sheet) {
         };
       }
       sheet.skills[skId].checked_for_improvement = chk.checked;
-      await saveInvestigator(sheet);
+      await updateInvestigatorSkillCheck(sheet.id, sheet.skills[skId]);
     });
   });
 
@@ -3093,13 +3283,13 @@ function renderEditableSheet(root, sheet) {
         sheet.backstory[catId] = { entry_text: "", is_key_connection: false };
       }
       sheet.backstory[catId].entry_text = area.value;
-      await saveInvestigator(sheet);
+      await updateInvestigatorBackstoryEntry(sheet.id, catId, sheet.backstory[catId]);
     });
   });
 
   root.querySelector("#sheetEquipmentTxt")?.addEventListener("change", async (e) => {
     sheet.personal_equipment = e.target.value;
-    await saveInvestigator(sheet);
+    await updateInvestigatorEquipment(sheet.id, sheet.personal_equipment);
   });
 }
 
