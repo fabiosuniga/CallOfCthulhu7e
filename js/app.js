@@ -69,6 +69,33 @@ const state = {
   returnToCampaignId: null
 };
 
+let loadingDepth = 0;
+
+function showLoading(label = "Consultando os Arquivos Arcanos...") {
+  loadingDepth += 1;
+  const overlay = document.getElementById("loadingOverlay");
+  const textEl = document.getElementById("loadingOverlayText");
+  if (textEl) textEl.textContent = label;
+  if (overlay) overlay.classList.remove("hidden");
+}
+
+function hideLoading() {
+  loadingDepth = Math.max(0, loadingDepth - 1);
+  if (loadingDepth === 0) {
+    const overlay = document.getElementById("loadingOverlay");
+    if (overlay) overlay.classList.add("hidden");
+  }
+}
+
+async function withLoading(fn, label = "Consultando os Arquivos Arcanos...") {
+  showLoading(label);
+  try {
+    return await fn();
+  } finally {
+    hideLoading();
+  }
+}
+
 // Cria um rascunho em branco para o Wizard de 5 Etapas
 function createBlankDraft() {
   const chars = {
@@ -218,18 +245,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 async function refreshConnectionAndData() {
-  await initSupabase();
-  state.currentUser = await getCurrentUser();
-  updateTopbarVisibility();
+  await withLoading(async () => {
+    await initSupabase();
+    state.currentUser = await getCurrentUser();
+    updateTopbarVisibility();
 
-  if (state.currentUser) {
-    state.investigators = await listInvestigators();
-  } else {
-    state.investigators = [];
-    state.campaigns = [];
-    state.activeCampaignRoom = null;
-  }
-  render();
+    if (state.currentUser) {
+      state.investigators = await listInvestigators();
+    } else {
+      state.investigators = [];
+      state.campaigns = [];
+      state.activeCampaignRoom = null;
+    }
+    render();
+  }, "Consultando os Arquivos Arcanos...");
 }
 
 function updateTopbarVisibility() {
@@ -255,27 +284,33 @@ function updateTopbarVisibility() {
 function setupGlobalListeners() {
   document.getElementById("btnHomeBrand")?.addEventListener("click", async () => {
     if (!state.currentUser) return;
-    await unsubscribeFromCampaignRoom();
-    state.view = "dashboard";
-    state.investigators = await listInvestigators();
-    render();
+    await withLoading(async () => {
+      await unsubscribeFromCampaignRoom();
+      state.view = "dashboard";
+      state.investigators = await listInvestigators();
+      render();
+    }, "Carregando seus Investigadores...");
   });
 
   document.getElementById("btnNavInvestigators")?.addEventListener("click", async () => {
     if (!state.currentUser) return;
-    await unsubscribeFromCampaignRoom();
-    state.view = "dashboard";
-    state.investigators = await listInvestigators();
-    render();
+    await withLoading(async () => {
+      await unsubscribeFromCampaignRoom();
+      state.view = "dashboard";
+      state.investigators = await listInvestigators();
+      render();
+    }, "Carregando seus Investigadores...");
   });
 
   document.getElementById("btnNavCampaigns")?.addEventListener("click", async () => {
     if (!state.currentUser) return;
-    await unsubscribeFromCampaignRoom();
-    state.view = "campaigns";
-    state.campaigns = await listMyCampaigns();
-    state.investigators = await listInvestigators();
-    render();
+    await withLoading(async () => {
+      await unsubscribeFromCampaignRoom();
+      state.view = "campaigns";
+      state.campaigns = await listMyCampaigns();
+      state.investigators = await listInvestigators();
+      render();
+    }, "Convocando Mesas & Campanhas...");
   });
 
   document.getElementById("btnNewInvestigatorTop")?.addEventListener("click", async () => {
@@ -285,8 +320,10 @@ function setupGlobalListeners() {
   });
 
   document.getElementById("btnTopSignOut")?.addEventListener("click", async () => {
-    await signOutUser();
-    await refreshConnectionAndData();
+    await withLoading(async () => {
+      await signOutUser();
+      await refreshConnectionAndData();
+    }, "Encerrando ritual de sessão...");
   });
 
   document.getElementById("topUserEmail")?.addEventListener("click", async () => {
@@ -684,35 +721,41 @@ function renderDashboard(root) {
   root.querySelector("#btnEmptyCreate")?.addEventListener("click", startNewInvestigatorWizard);
   root.querySelector("#btnCreateSample")?.addEventListener("click", createSampleInvestigator);
   root.querySelector("#btnGoCampaigns")?.addEventListener("click", async () => {
-    state.view = "campaigns";
-    state.campaigns = await listMyCampaigns();
-    render();
+    await withLoading(async () => {
+      state.view = "campaigns";
+      state.campaigns = await listMyCampaigns();
+      render();
+    }, "Convocando Mesas & Campanhas...");
   });
 
   root.querySelectorAll("[data-open-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-open-id");
-      const sheet = await getInvestigatorById(id);
-      if (sheet) {
-        state.activeSheet = sheet;
-        state.returnToCampaignId = null;
-        state.sheetTab = "front";
-        state.view = "sheet";
-        render();
-      }
+      await withLoading(async () => {
+        const sheet = await getInvestigatorById(id);
+        if (sheet) {
+          state.activeSheet = sheet;
+          state.returnToCampaignId = null;
+          state.sheetTab = "front";
+          state.view = "sheet";
+          render();
+        }
+      }, "Abrindo Ficha do Investigador...");
     });
   });
 
   root.querySelectorAll("[data-edit-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-edit-id");
-      const sheet = await getInvestigatorById(id);
-      if (sheet) {
-        state.draft = hydrateDraftFromSheet(sheet);
-        state.wizardStep = 1;
-        state.view = "wizard";
-        render();
-      }
+      await withLoading(async () => {
+        const sheet = await getInvestigatorById(id);
+        if (sheet) {
+          state.draft = hydrateDraftFromSheet(sheet);
+          state.wizardStep = 1;
+          state.view = "wizard";
+          render();
+        }
+      }, "Carregando Ficha para Edição...");
     });
   });
 
@@ -720,9 +763,11 @@ function renderDashboard(root) {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-del-id");
       if (confirm("Deseja realmente excluir este investigador?")) {
-        await deleteInvestigator(id);
-        state.investigators = await listInvestigators();
-        render();
+        await withLoading(async () => {
+          await deleteInvestigator(id);
+          state.investigators = await listInvestigators();
+          render();
+        }, "Excluindo Registro dos Arquivos...");
       }
     });
   });
@@ -909,8 +954,10 @@ function renderCampaignsList(root) {
     const era = root.querySelector("#campEraInput").value;
     const description = root.querySelector("#campDescInput").value;
     try {
-      const created = await createCampaign({ name, era, description });
-      await openCampaignRoom(created.id);
+      await withLoading(async () => {
+        const created = await createCampaign({ name, era, description });
+        await openCampaignRoom(created.id);
+      }, "Criando Mesa do Guardião...");
     } catch (err) {
       alert(err.message || "Erro ao criar mesa.");
     }
@@ -921,8 +968,10 @@ function renderCampaignsList(root) {
     const code = root.querySelector("#joinCodeInput").value;
     const invId = root.querySelector("#joinInvestigatorSelect")?.value;
     try {
-      const camp = await joinCampaignByCode(code, invId);
-      await openCampaignRoom(camp.id);
+      await withLoading(async () => {
+        const camp = await joinCampaignByCode(code, invId);
+        await openCampaignRoom(camp.id);
+      }, "Ingressando na Mesa Ao Vivo...");
     } catch (err) {
       alert(err.message || "Erro ao entrar na mesa.");
     }
@@ -939,15 +988,17 @@ function renderCampaignsList(root) {
     btn.addEventListener("click", async () => {
       const invId = btn.getAttribute("data-camp-open-inv");
       const campId = btn.getAttribute("data-camp-id");
-      const sheet = await getInvestigatorById(invId);
-      if (sheet) {
-        state.activeCampaignRoom = await getCampaignRoomData(campId);
-        state.activeSheet = sheet;
-        state.returnToCampaignId = campId;
-        state.sheetTab = "front";
-        state.view = "sheet";
-        render();
-      }
+      await withLoading(async () => {
+        const sheet = await getInvestigatorById(invId);
+        if (sheet) {
+          state.activeCampaignRoom = await getCampaignRoomData(campId);
+          state.activeSheet = sheet;
+          state.returnToCampaignId = campId;
+          state.sheetTab = "front";
+          state.view = "sheet";
+          render();
+        }
+      }, "Abrindo Ficha Vinculada...");
     });
   });
 
@@ -955,9 +1006,11 @@ function renderCampaignsList(root) {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-del-camp");
       if (confirm("Deseja realmente excluir esta mesa e seu histórico?")) {
-        await deleteCampaign(id);
-        state.campaigns = await listMyCampaigns();
-        render();
+        await withLoading(async () => {
+          await deleteCampaign(id);
+          state.campaigns = await listMyCampaigns();
+          render();
+        }, "Encerrando Mesa...");
       }
     });
   });
@@ -966,9 +1019,11 @@ function renderCampaignsList(root) {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-leave-camp");
       if (confirm("Deseja retirar seu investigador desta mesa?")) {
-        await leaveCampaign(id);
-        state.campaigns = await listMyCampaigns();
-        render();
+        await withLoading(async () => {
+          await leaveCampaign(id);
+          state.campaigns = await listMyCampaigns();
+          render();
+        }, "Retirando Investigador da Mesa...");
       }
     });
   });
@@ -976,31 +1031,33 @@ function renderCampaignsList(root) {
 
 async function openCampaignRoom(campaignId) {
   try {
-    state.activeCampaignRoom = await getCampaignRoomData(campaignId);
-    state.view = "campaign_room";
-    render();
+    await withLoading(async () => {
+      state.activeCampaignRoom = await getCampaignRoomData(campaignId);
+      state.view = "campaign_room";
+      render();
 
-    const myMember = (state.activeCampaignRoom.members || []).find(
-      (m) => m.user_id === state.currentUser?.id
-    );
-    const myInv = myMember?.investigator || null;
+      const myMember = (state.activeCampaignRoom.members || []).find(
+        (m) => m.user_id === state.currentUser?.id
+      );
+      const myInv = myMember?.investigator || null;
 
-    await subscribeToCampaignRoom(
-      campaignId,
-      async () => {
-        if (state.view === "campaign_room" && state.activeCampaignRoom?.campaign?.id === campaignId) {
-          state.activeCampaignRoom = await getCampaignRoomData(campaignId);
-          renderCampaignRoom(document.getElementById("appRoot"));
-        }
-      },
-      (onlineMap) => {
-        state.onlineUsers = onlineMap || {};
-        if (state.view === "campaign_room" && state.activeCampaignRoom?.campaign?.id === campaignId) {
-          renderCampaignRoom(document.getElementById("appRoot"));
-        }
-      },
-      myInv
-    );
+      await subscribeToCampaignRoom(
+        campaignId,
+        async () => {
+          if (state.view === "campaign_room" && state.activeCampaignRoom?.campaign?.id === campaignId) {
+            state.activeCampaignRoom = await getCampaignRoomData(campaignId);
+            renderCampaignRoom(document.getElementById("appRoot"));
+          }
+        },
+        (onlineMap) => {
+          state.onlineUsers = onlineMap || {};
+          if (state.view === "campaign_room" && state.activeCampaignRoom?.campaign?.id === campaignId) {
+            renderCampaignRoom(document.getElementById("appRoot"));
+          }
+        },
+        myInv
+      );
+    }, "Sintonizando Sala Ao Vivo...");
   } catch (err) {
     alert(err.message || "Não foi possível abrir a sala da mesa.");
   }
@@ -1609,14 +1666,16 @@ function renderCampaignRoom(root) {
   root.querySelectorAll("[data-room-open-sheet]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const invId = btn.getAttribute("data-room-open-sheet");
-      const sheet = await getInvestigatorById(invId);
-      if (sheet) {
-        state.activeSheet = sheet;
-        state.returnToCampaignId = campaign.id;
-        state.sheetTab = "front";
-        state.view = "sheet";
-        render();
-      }
+      await withLoading(async () => {
+        const sheet = await getInvestigatorById(invId);
+        if (sheet) {
+          state.activeSheet = sheet;
+          state.returnToCampaignId = campaign.id;
+          state.sheetTab = "front";
+          state.view = "sheet";
+          render();
+        }
+      }, "Abrindo Ficha Conectada...");
     });
   });
 
@@ -1718,11 +1777,13 @@ async function createSampleInvestigator() {
   ];
 
   recalculateDraft(sample);
-  const saved = await saveInvestigator(sample);
-  state.investigators = await listInvestigators();
-  state.activeSheet = saved;
-  state.view = "sheet";
-  render();
+  await withLoading(async () => {
+    const saved = await saveInvestigator(sample);
+    state.investigators = await listInvestigators();
+    state.activeSheet = saved;
+    state.view = "sheet";
+    render();
+  }, "Invocando Investigador de Exemplo...");
 }
 
 // ============================================================================
@@ -1916,11 +1977,13 @@ function renderWizard(root) {
 
   root.querySelector("#btnWizardFinish")?.addEventListener("click", async () => {
     recalculateDraft(d);
-    const saved = await saveInvestigator(d);
-    state.investigators = await listInvestigators();
-    state.activeSheet = saved;
-    state.view = "sheet";
-    render();
+    await withLoading(async () => {
+      const saved = await saveInvestigator(d);
+      state.investigators = await listInvestigators();
+      state.activeSheet = saved;
+      state.view = "sheet";
+      render();
+    }, "Selando Ficha nos Arquivos Arcanos...");
   });
 }
 
