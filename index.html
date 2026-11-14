@@ -50,6 +50,17 @@
   <!-- CONTEÚDO DINÂMICO PRINCIPAL -->
   <main class="main-container" id="appRoot"></main>
 
+  <!-- INDICADOR DE CARREGAMENTO CENTRAL (TEMÁTICA TERROR CÓSMICO) -->
+  <div id="loadingOverlay" class="loading-overlay hidden" role="status" aria-live="polite">
+    <div class="loading-box">
+      <div class="loading-header">
+        <i class="fa-solid fa-eye loading-icon" aria-hidden="true"></i>
+        <span id="loadingOverlayText" class="loading-label">Consultando os Arquivos Arcanos...</span>
+      </div>
+      <progress id="loadingProgressBar" class="eldritch-progress" aria-labelledby="loadingOverlayText"></progress>
+    </div>
+  </div>
+
   <!-- TOAST FLUTUANTE DO ROLADOR 1D100 -->
   <aside id="diceToast" class="dice-toast hidden" aria-live="polite">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem;">
