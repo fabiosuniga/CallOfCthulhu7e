@@ -973,6 +973,13 @@ dialog.coc-dialog::backdrop {
   background: rgba(7, 7, 10, 0.72);
   backdrop-filter: blur(4px);
   padding: 1rem;
+  transition: opacity 0.2s ease;
+}
+
+.loading-overlay.hidden {
+  display: none !important;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .loading-box {
@@ -1029,14 +1036,11 @@ progress.eldritch-progress {
   --progress-bar-border-width: 1px;
   --progress-bar-border-radius: 999px;
   --progress-bar-indeterminate-size: 42%;
-  --progress-bar-indeterminate-animation-duration: 1.4s;
+  --progress-bar-indeterminate-animation-duration: 1.35s;
   --progress-bar-indeterminate-animation-timing: ease-in-out;
 
-  @media (prefers-reduced-motion: reduce) {
-    --progress-bar-indeterminate-animation-duration: 10s;
-  }
-
   appearance: none;
+  -webkit-appearance: none;
   display: block;
   inline-size: var(--progress-bar-inline-size);
   block-size: var(--progress-bar-block-size);
@@ -1047,30 +1051,38 @@ progress.eldritch-progress {
   overflow: clip;
   container-type: inline-size;
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 12px rgba(220, 20, 30, 0.25);
+}
 
-  &:not([value]) {
-    --progress-bar-animation: eldritch-progress-indeterminate
-      var(--progress-bar-indeterminate-animation-duration)
-      var(--progress-bar-indeterminate-animation-timing) infinite alternate;
+@media (prefers-reduced-motion: reduce) {
+  progress.eldritch-progress {
+    --progress-bar-indeterminate-animation-duration: 10s;
   }
+}
 
-  &::-webkit-progress-bar {
-    background: transparent;
-  }
+progress.eldritch-progress:not([value]) {
+  --progress-bar-animation: eldritch-progress-indeterminate
+    var(--progress-bar-indeterminate-animation-duration)
+    var(--progress-bar-indeterminate-animation-timing) infinite alternate;
+}
 
-  &::-webkit-progress-value {
-    background: var(--progress-bar-fill);
-    border-radius: inherit;
-    box-shadow: 0 0 10px var(--crimson-bright);
-    animation: var(--progress-bar-animation, revert-rule);
-  }
+progress.eldritch-progress::-webkit-progress-bar {
+  background: transparent;
+}
 
-  &::-moz-progress-bar {
-    background: var(--progress-bar-fill);
-    border-radius: inherit;
-    box-shadow: 0 0 10px var(--crimson-bright);
-    animation: var(--progress-bar-animation, revert-rule);
-  }
+progress.eldritch-progress::-webkit-progress-value {
+  inline-size: var(--progress-bar-indeterminate-size) !important;
+  background: var(--progress-bar-fill);
+  border-radius: inherit;
+  box-shadow: 0 0 10px var(--crimson-bright);
+  animation: var(--progress-bar-animation, revert-rule);
+}
+
+progress.eldritch-progress::-moz-progress-bar {
+  inline-size: var(--progress-bar-indeterminate-size);
+  background: var(--progress-bar-fill);
+  border-radius: inherit;
+  box-shadow: 0 0 10px var(--crimson-bright);
+  animation: var(--progress-bar-animation, revert-rule);
 }
 
 @keyframes eldritch-progress-indeterminate {
