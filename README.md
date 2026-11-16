@@ -2,12 +2,15 @@
 
 Plataforma web para criação guiada de investigadores, fichas interativas e gerenciamento de campanhas em tempo real, baseada nas regras oficiais da 7ª Edição de *Chamado de Cthulhu* (Chaosium Inc.).
 
-**Acesse a aplicação online:** [https://fabiosuniga.github.io/CallOfCthulhu7e/](https://fabiosuniga.github.io/CallOfCthulhu7e/)
+<p align="center">
+  <a href="https://fabiosuniga.github.io/CallOfCthulhu7e/" target="_blank">
+    <img src="https://img.shields.io/badge/ACESSAR_APLICAÇÃO_ONLINE-CLIQUE_AQUI-8b0000?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Acessar Aplicação Online" height="38" />
+  </a>
+</p>
 
 ---
 
 <!-- BANNER TEMÁTICO DO TOPO -->
-<!-- Adicione a imagem do banner em assets/banner.png -->
 ![Banner do Projeto](./assets/banner.png)
 
 ---
@@ -20,7 +23,6 @@ Plataforma web para criação guiada de investigadores, fichas interativas e ger
 - [Arquitetura e Tecnologias](#arquitetura-e-tecnologias)
 - [Estrutura do Projeto](#estrutura-do-projeto)
 - [Acesso Online](#acesso-online)
-- [Configuração do Banco de Dados](#configuração-do-banco-de-dados)
 - [Aviso Legal (Chaosium Fan Policy)](#aviso-legal-chaosium-fan-policy)
 
 ---
@@ -36,8 +38,6 @@ A aplicação foi validada em ambiente de jogo real, operando com sucesso uma se
 ---
 
 ## Demonstração Visual
-
-<!-- Substitua ou adicione as capturas de tela correspondentes na pasta assets/ -->
 
 ### 1. Wizard de Criação Guiada (5 Etapas)
 *Fluxo passo a passo que calcula regras de idade, atributos, ocupações e interesses pessoais em tempo real.*
@@ -97,21 +97,16 @@ A aplicação foi desenvolvida seguindo o modelo de Single Page Application (SPA
 
 A aplicação está disponível e pronta para uso imediato via GitHub Pages, sem necessidade de download ou instalação local:
 
-**Link direto:** [https://fabiosuniga.github.io/CallOfCthulhu7e/](https://fabiosuniga.github.io/CallOfCthulhu7e/)
+<p align="center">
+  <br>
+  <a href="https://fabiosuniga.github.io/CallOfCthulhu7e/" target="_blank">
+    <img src="https://img.shields.io/badge/JOGAR_AGORA-ACESSO_ONLINE-8b0000?style=for-the-badge&logo=githubpages&logoColor=white" alt="Jogar Agora Online" height="42" />
+  </a>
+  <br>
+  <br>
+</p>
 
 Basta acessar pelo navegador (desktop ou mobile), autenticar sua conta e começar a criar seus investigadores e campanhas.
-
----
-
-## Configuração do Banco de Dados
-
-Por padrão, a aplicação já inclui parâmetros de conexão para demonstração via `js/config.js`. Caso deseje utilizar uma instância própria do Supabase:
-
-1. Crie um projeto gratuito no [Supabase](https://supabase.com).
-2. Configure as tabelas de `investigators` e `campaigns` com as políticas de Row Level Security (RLS) adequadas.
-3. Insira suas credenciais públicas (`url` e `anonKey`) em `js/config.js` ou diretamente nas configurações locais da aplicação.
-
-> **Importante:** Nunca adicione chaves secretas (`service_role`) no código cliente. Apenas a chave pública anônima (`anonKey`) deve ser exposta.
 
 ---
 
