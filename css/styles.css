@@ -417,7 +417,8 @@ label {
 
 .site-hero-banner {
   width: 100%;
-  max-height: 280px;
+  height: auto;
+  aspect-ratio: 6336 / 2688;
   object-fit: cover;
   object-position: center;
   display: block;
@@ -434,7 +435,8 @@ label {
 
 .auth-hero-banner {
   width: 100%;
-  max-height: 180px;
+  height: auto;
+  aspect-ratio: 6336 / 2688;
   object-fit: cover;
   object-position: center;
   display: block;
