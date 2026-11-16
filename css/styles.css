@@ -1091,12 +1091,37 @@ dialog.coc-dialog::backdrop {
   }
 }
 
+/* ============================================================================
+   RODAPÉ LEGAL & CRÉDITOS (CHAOSIUM FAN POLICY)
+   ============================================================================ */
+.site-footer {
+  border-top: 1px solid var(--border-subtle);
+  background: rgba(8, 8, 12, 0.75);
+  padding: 1.25rem 1.5rem;
+  margin-top: auto;
+  text-align: center;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.site-footer a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  transition: color 0.15s ease;
+}
+
+.site-footer a:hover {
+  color: var(--crimson-bright);
+}
+
 @media print {
   body {
     background: #fff !important;
     color: #000 !important;
   }
   .topbar,
+  .site-footer,
   .no-print,
   .dice-toast,
   .loading-overlay {
