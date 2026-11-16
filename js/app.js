@@ -480,21 +480,7 @@ function renderAuthScreen(root) {
         />
       </div>
 
-      <section class="ornate-panel" style="padding:1.85rem;">
-        <div style="text-align:center; margin-bottom:1.35rem;">
-          <img
-            src="./assets/app-icon-512.png"
-            alt="Logo Chamado de Cthulhu"
-            style="width:76px; height:76px; border-radius:50%; border:2px solid var(--crimson-primary); box-shadow:0 0 22px rgba(220,20,30,0.5); margin-bottom:0.65rem;"
-          />
-          <h1 style="font-family:var(--font-display); font-size:1.35rem; letter-spacing:0.08em; text-transform:uppercase;">
-            Chamado de Cthulhu
-          </h1>
-          <p style="font-size:0.82rem; color:var(--text-secondary); margin-top:0.2rem;">
-            Acesse sua conta para gerenciar seus Investigadores e participar de Mesas Ao Vivo.
-          </p>
-        </div>
-
+      <section class="ornate-panel" style="padding:1.6rem 1.85rem;">
         <div class="auth-tabs">
           <button
             type="button"
