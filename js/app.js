@@ -471,6 +471,15 @@ function renderAuthScreen(root) {
 
   root.innerHTML = `
     <div class="auth-wrapper">
+      <div class="auth-hero-banner-wrap">
+        <img
+          src="./assets/banner.png"
+          alt="Chamado de Cthulhu 7e"
+          class="auth-hero-banner"
+          onerror="this.closest('.auth-hero-banner-wrap').style.display='none'"
+        />
+      </div>
+
       <section class="ornate-panel" style="padding:1.85rem;">
         <div style="text-align:center; margin-bottom:1.35rem;">
           <img
@@ -626,6 +635,15 @@ function translateAuthError(rawMsg = "") {
 // ============================================================================
 function renderDashboard(root) {
   root.innerHTML = `
+    <div class="site-hero-banner-wrap">
+      <img
+        src="./assets/banner.png"
+        alt="Chamado de Cthulhu 7e — Arquivos de Investigadores"
+        class="site-hero-banner"
+        onerror="this.closest('.site-hero-banner-wrap').style.display='none'"
+      />
+    </div>
+
     <section class="ornate-panel">
       <div class="hero-header">
         <div>
