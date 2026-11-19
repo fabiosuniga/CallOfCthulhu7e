@@ -100,3 +100,22 @@ The application is live and ready to use via GitHub Pages, with no download or l
 <p align="center">
   <br>
   <a href="
+
+<p align="center">
+  <br>
+  <a href="https://fabiosuniga.github.io/CallOfCthulhu7e/" target="_blank">
+    <img src="https://img.shields.io/badge/PLAY_NOW-ONLINE_ACCESS-8b0000?style=for-the-badge&logo=githubpages&logoColor=white" alt="Play Now Online" height="42" />
+  </a>
+  <br>
+  <br>
+</p>
+
+Simply open it in your browser (desktop or mobile), sign in, and start creating investigators and campaigns.
+
+---
+
+## Legal Notice (Chaosium Fan Policy)
+
+This is an unofficial fan-made project created for the tabletop RPG community for personal and educational use, with no commercial or for-profit purpose.
+
+*Call of Cthulhu* and the Call of Cthulhu logo are registered trademarks of **Chaosium Inc.** All rights to the universe, rules, and original elements of the system belong to Chaosium Inc. and their respective authors.
