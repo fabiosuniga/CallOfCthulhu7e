@@ -1,117 +1,102 @@
-# Call of Cthulhu 7e — Criador & Arquivo de Investigadores
+[Leia em Português](README.pt-BR.md)
 
-Plataforma web para criação guiada de investigadores, fichas interativas e gerenciamento de campanhas em tempo real, baseada nas regras oficiais da 7ª Edição de *Chamado de Cthulhu* (Chaosium Inc.).
+# Call of Cthulhu 7e — Investigator Creator & Archive
+
+Web platform for guided investigator creation, interactive character sheets, and real-time campaign management, based on the official 7th Edition rules of *Call of Cthulhu* (Chaosium Inc.).
 
 <p align="center">
   <a href="https://fabiosuniga.github.io/CallOfCthulhu7e/" target="_blank">
-    <img src="https://img.shields.io/badge/ACESSAR_APLICAÇÃO_ONLINE-CLIQUE_AQUI-8b0000?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Acessar Aplicação Online" height="38" />
+    <img src="https://img.shields.io/badge/LAUNCH_WEB_APP-CLICK_HERE-8b0000?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Launch Web App" height="38" />
   </a>
 </p>
 
 ---
 
-<!-- BANNER TEMÁTICO DO TOPO -->
-![Banner do Projeto](./assets/banner.png)
+<!-- TOP THEMATIC BANNER -->
+![Project Banner](./assets/banner.png)
 
 ---
 
-## Sumário
+## Table of Contents
 
-- [Visão Geral](#visão-geral)
-- [Demonstração Visual](#demonstração-visual)
-- [Principais Funcionalidades](#principais-funcionalidades)
-- [Arquitetura e Tecnologias](#arquitetura-e-tecnologias)
-- [Estrutura do Projeto](#estrutura-do-projeto)
-- [Acesso Online](#acesso-online)
-- [Aviso Legal (Chaosium Fan Policy)](#aviso-legal-chaosium-fan-policy)
-
----
-
-## Visão Geral
-
-*Chamado de Cthulhu 7ª Edição* é um dos sistemas de RPG de mesa mais aclamados do mundo, porém possui uma curva de entrada complexa na fase de criação de personagens: cálculos manuais de frações (metade e um quinto de valores), regras detalhadas de modificação por idade (penalidades em atributos físicos e melhorias em Educação), orçamentos restritos de pontos ocupacionais e gestão rigorosa de Sanidade e Sorte.
-
-Este projeto foi construído para eliminar o atrito matemático e a burocracia de fichas em papel ou PDFs estáticos, permitindo que jogadores e Guardiões foquem no que realmente importa: a narrativa investigativa e o horror cósmico.
-
-A aplicação foi validada em ambiente de jogo real, operando com sucesso uma sessão completa de jogo com zero suporte externo de calculadoras ou fichas físicas.
+- [Overview](#overview)
+- [Visual Showcase](#visual-showcase)
+- [Key Features](#key-features)
+- [Architecture & Tech Stack](#architecture--tech-stack)
+- [Online Access](#online-access)
+- [Legal Notice (Chaosium Fan Policy)](#legal-notice-chaosium-fan-policy)
 
 ---
 
-## Demonstração Visual
+## Overview
 
-### 1. Wizard de Criação Guiada (5 Etapas)
-*Fluxo passo a passo que calcula regras de idade, atributos, ocupações e interesses pessoais em tempo real.*
+*Call of Cthulhu 7th Edition* is one of the most acclaimed tabletop RPG systems in the world, yet it has a steep entry curve during character creation: manual fraction calculations (half and fifth values), detailed age modification rules (penalties to physical characteristics and Education improvement checks), strict occupational skill point budgets, and meticulous tracking of Sanity and Luck.
 
-![Criação de Investigador](./assets/screenshot-wizard.png)
+This project was built to eliminate mathematical friction and the overhead of paper sheets or static PDFs, allowing players and Keepers to focus on what truly matters: investigative storytelling and cosmic horror.
 
-### 2. Ficha Interativa com Rolador 1D100 Integrado
-*Ficha completa com frações pré-calculadas e avaliação instantânea de sucessos (Regular, Difícil, Extremo, Sucesso Crítico e Desastre).*
-
-![Ficha Interativa](./assets/screenshot-sheet.png)
-
-### 3. Gerenciamento de Mesas e Campanhas
-*Espaço para o Guardião organizar a campanha e acompanhar os investigadores sincronizados.*
-
-![Salas e Campanhas](./assets/screenshot-campaign.png)
+The application has been validated in a real tabletop environment, successfully running a full game session with zero external calculators or physical sheets.
 
 ---
 
-## Principais Funcionalidades
+## Visual Showcase
 
-### Motor de Regras Oficial (`coc7eRules.js`)
-- **Modificadores por Faixa Etária:** Implementação das tabelas de 15 a 90 anos, aplicando automaticamente penalidades em atributos físicos (FOR, CON, DES, TAM), checagens de melhoria de EDU e regra de Sorte vantajosa para jovens.
-- **Cálculo Preciso de Frações:** Cálculo determinístico dos valores total, metade (1/2) e quinto (1/5) para todas as características e perícias.
-- **Derivados Calculados:** Determinação automática de Pontos de Vida (PV), Pontos de Magia (PM), Limiar de Ferimento Grave, Taxa de Movimento (MOV), Bônus de Dano (BD), Corpo e Sanidade Inicial com base em POD.
-- **Validação de Orçamento de Pontos:** Controle rigoroso dos pontos alocados em perícias ocupacionais (conforme a fórmula da ocupação) e pontos de interesses pessoais (INT × 2).
+### 1. Guided Creation Wizard (5 Steps)
+*Step-by-step flow that calculates age rules, characteristics, occupations, and personal interest points in real time.*
 
-### Ficha de Investigador Dinâmica
-- **Rolador de Dados Clicável:** Testes com 1 clique direto na perícia ou atributo, exibindo toast com margens de sucesso e resultado auditável.
-- **Controle de Recursos em Jogo:** Ajuste rápido de Sanidade atual, Pontos de Vida, Magia e Sorte gastável.
-- **Histórico e Conexões:** Campos estruturados para Ideologia/Crenças, Pessoas Importantes, Locais Significativos, Posses Queridas, Fobias, Manias e Encontros com o Mito.
+![Investigator Creation](./assets/screenshot-wizard.png)
 
-### Mesas & Campanhas em Tempo Real
-- **Painel do Guardião:** Criação e listagem de campanhas com associação direta de investigadores.
-- **Sincronização de Estado:** Persistência centralizada em nuvem com sincronização via WebSockets.
+### 2. Interactive Sheet with Built-in 1D100 Roller
+*Complete character sheet with pre-calculated fractions and instant success-level evaluation (Regular, Hard, Extreme, Critical Success, and Fumble).*
+
+![Interactive Sheet](./assets/screenshot-sheet.png)
+
+### 3. Table & Campaign Management
+*Dedicated workspace for the Keeper to organize campaigns and monitor synchronized investigators.*
+
+![Rooms and Campaigns](./assets/screenshot-campaign.png)
 
 ---
 
-## Arquitetura e Tecnologias
+## Key Features
 
-A aplicação foi desenvolvida seguindo o modelo de Single Page Application (SPA), priorizando leveza, tempo de carregamento imediato e facilidade de implantação em plataformas estáticas (como GitHub Pages, Vercel ou Netlify).
+### Official Rules Engine (`coc7eRules.js`)
+- **Age Modifiers:** Full implementation of the 15-to-90 age brackets, automatically applying penalties to physical characteristics (STR, CON, DEX, SIZ), EDU improvement checks, and the advantageous Luck roll rule for younger investigators.
+- **Accurate Fraction Calculations:** Deterministic calculation of full, half (1/2), and fifth (1/5) values for all characteristics and skills.
+- **Derived Attributes:** Automatic calculation of Hit Points (HP), Magic Points (MP), Major Wound Threshold, Move Rate (MOV), Damage Bonus (DB), Build, and Starting Sanity based on POW.
+- **Point Budget Validation:** Strict tracking of points allocated to occupational skills (according to each occupation's formula) and personal interest points (INT × 2).
+
+### Dynamic Investigator Sheet
+- **Clickable Dice Roller:** One-click skill and characteristic rolls displaying toast notifications with success margins and auditable results.
+- **In-Game Resource Tracking:** Quick adjustments for current Sanity, Hit Points, Magic Points, and spendable Luck.
+- **Backstory & Connections:** Structured fields for Ideology/Beliefs, Significant People, Meaningful Locations, Treasured Possessions, Phobias, Manias, and Mythos Encounters.
+
+### Real-Time Tables & Campaigns
+- **Keeper's Dashboard:** Campaign creation and listing with direct investigator association.
+- **State Synchronization:** Centralized cloud persistence with real-time updates via WebSockets.
+
+---
+
+## Architecture & Tech Stack
+
+The application was designed as a Single Page Application (SPA), prioritizing lightweight performance, instant load times, and straightforward deployment on static hosting platforms (such as GitHub Pages, Vercel, or Netlify).
 
 ### Frontend
-- **JavaScript Vanilla (ES Modules):** Código modular sem dependência de frameworks pesados, garantindo alta performance e manutenibilidade.
-- **HTML5 Semântico & Acessibilidade:** Elementos com papéis acessíveis (`role`, `aria-live`) para retorno imediato aos leitores de tela em rolagens e notificações.
-- **CSS3 Moderno:** Arquitetura baseada em variáveis CSS (Design Tokens), Flexbox e CSS Grid. Tipografia temática combinando *Cinzel*, *Inter* e *JetBrains Mono*.
+- **Vanilla JavaScript (ES Modules):** Modular codebase with zero heavy framework dependencies, ensuring high performance and maintainability.
+- **Semantic HTML5 & Accessibility:** Accessible roles and live regions (`role`, `aria-live`) for immediate screen-reader feedback on dice rolls and notifications.
+- **Modern CSS3:** Built with CSS Custom Properties (Design Tokens), Flexbox, and CSS Grid. Thematic typography pairing *Cinzel*, *Inter*, and *JetBrains Mono*.
 
-### Backend & Nuvem
+### Backend & Cloud
 - **Supabase:**
-  - **Supabase Auth:** Autenticação segura de usuários.
-  - **PostgreSQL com Row Level Security (RLS):** Isolamento de dados garantindo que cada jogador acesse apenas seus próprios dados e campanhas autorizadas.
-  - **Supabase Realtime:** Transmissão de eventos de campanha via WebSockets.
+  - **Supabase Auth:** Secure user authentication.
+  - **PostgreSQL with Row Level Security (RLS):** Data isolation ensuring each player can only access their own records and authorized campaigns.
+  - **Supabase Realtime:** Live campaign event broadcasting via WebSockets.
 
 ---
 
+## Online Access
 
-## Acesso Online
-
-A aplicação está disponível e pronta para uso imediato via GitHub Pages, sem necessidade de download ou instalação local:
+The application is live and ready to use via GitHub Pages, with no download or local installation required:
 
 <p align="center">
   <br>
-  <a href="https://fabiosuniga.github.io/CallOfCthulhu7e/" target="_blank">
-    <img src="https://img.shields.io/badge/JOGAR_AGORA-ACESSO_ONLINE-8b0000?style=for-the-badge&logo=githubpages&logoColor=white" alt="Jogar Agora Online" height="42" />
-  </a>
-  <br>
-  <br>
-</p>
-
-Basta acessar pelo navegador (desktop ou mobile), autenticar sua conta e começar a criar seus investigadores e campanhas.
-
----
-
-## Aviso Legal (Chaosium Fan Policy)
-
-Este é um projeto não oficial desenvolvido por fãs para a comunidade de RPG de mesa, para uso pessoal e educacional, sem qualquer finalidade comercial ou lucrativa.
-
-*Call of Cthulhu* (Chamado de Cthulhu) e o logotipo de Call of Cthulhu são marcas registradas da **Chaosium Inc.** Todos os direitos sobre o universo, regras e elementos originais do sistema pertencem à Chaosium Inc. e aos seus respectivos autores.
+  <a href="
