@@ -1,4 +1,4 @@
-[Leia em Português](README.pt-BR.md)
+[Leia em Português](README-PT.md)
 
 # Call of Cthulhu 7e — Investigator Creator & Archive
 
