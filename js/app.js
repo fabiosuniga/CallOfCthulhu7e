@@ -10,6 +10,7 @@ import {
   updateUserDisplayName,
   signInWithEmail,
   signUpWithEmail,
+  signInAsDemoGuest,
   onAuthStateChange,
   signOutUser,
   listInvestigators,
@@ -547,6 +548,24 @@ function renderAuthScreen(root) {
             ${isLogin ? "Entrar nos Arquivos" : "Registrar Conta"}
           </button>
         </form>
+
+        <div style="display:flex; align-items:center; gap:0.75rem; margin:1.15rem 0 0.9rem;">
+          <div style="flex:1; height:1px; background:var(--border-subtle);"></div>
+          <span style="font-size:0.74rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em;">ou</span>
+          <div style="flex:1; height:1px; background:var(--border-subtle);"></div>
+        </div>
+
+        <button
+          type="button"
+          class="btn"
+          id="btnAuthDemoGuest"
+          style="width:100%; padding:0.7rem; justify-content:center; border-color:var(--border-ornate);"
+        >
+          <i class="fa-solid fa-eye"></i> Testar sem Cadastro (Modo Demo)
+        </button>
+        <p style="font-size:0.74rem; color:var(--text-muted); text-align:center; margin-top:0.5rem;">
+          Acesso instantâneo em sessão temporária com um investigador pronto para testar.
+        </p>
       </section>
     </div>
   `;
@@ -594,6 +613,30 @@ function renderAuthScreen(root) {
       submitBtn.disabled = false;
     }
   });
+
+  root.querySelector("#btnAuthDemoGuest")?.addEventListener("click", async () => {
+    const msgEl = root.querySelector("#authScreenFeedback");
+    const demoBtn = root.querySelector("#btnAuthDemoGuest");
+    const submitBtn = root.querySelector("#btnAuthSubmit");
+
+    demoBtn.disabled = true;
+    if (submitBtn) submitBtn.disabled = true;
+    msgEl.style.color = "var(--text-secondary)";
+    msgEl.textContent = "Preparando sessão de demonstração...";
+
+    try {
+      await signInAsDemoGuest();
+      await refreshConnectionAndData();
+      if (state.currentUser && state.investigators.length === 0) {
+        await createSampleInvestigator({ openSheet: false });
+      }
+    } catch (err) {
+      msgEl.style.color = "var(--crimson-bright)";
+      msgEl.textContent = translateAuthError(err.message);
+      demoBtn.disabled = false;
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
 }
 
 function translateAuthError(rawMsg = "") {
@@ -609,6 +652,9 @@ function translateAuthError(rawMsg = "") {
   }
   if (m.includes("password should be at least")) {
     return "A senha deve ter pelo menos 6 caracteres.";
+  }
+  if (m.includes("anonymous sign-ins are disabled")) {
+    return "O modo demonstração (acesso anônimo) está desativado nas configurações do Supabase.";
   }
   if (m.includes("rate limit") || m.includes("security purposes")) {
     return "Muitas tentativas recentes. Aguarde alguns instantes e tente novamente.";
@@ -1704,7 +1750,7 @@ function renderCampaignRoom(root) {
   });
 }
 
-async function createSampleInvestigator() {
+async function createSampleInvestigator({ openSheet = true } = {}) {
   const sample = createBlankDraft();
   sample.name = "Arthur Blackwood";
   sample.player_name = getUserDisplayName(state.currentUser);
@@ -1784,8 +1830,12 @@ async function createSampleInvestigator() {
   await withLoading(async () => {
     const saved = await saveInvestigator(sample);
     state.investigators = await listInvestigators();
-    state.activeSheet = saved;
-    state.view = "sheet";
+    if (openSheet) {
+      state.activeSheet = saved;
+      state.view = "sheet";
+    } else {
+      state.view = "dashboard";
+    }
     render();
   }, "Invocando Investigador de Exemplo...");
 }

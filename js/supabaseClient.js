@@ -105,6 +105,20 @@ export async function signUpWithEmail(email, password, displayName = "") {
   return data;
 }
 
+export async function signInAsDemoGuest() {
+  if (!supabaseInstance) throw new Error("Serviço de autenticação indisponível no momento.");
+  const { data, error } = await supabaseInstance.auth.signInAnonymously({
+    options: {
+      data: {
+        display_name: "Visitante (Demo)",
+        full_name: "Visitante (Demo)"
+      }
+    }
+  });
+  if (error) throw error;
+  return data;
+}
+
 export function onAuthStateChange(callback) {
   if (!supabaseInstance) return;
   supabaseInstance.auth.onAuthStateChange((event, session) => {
